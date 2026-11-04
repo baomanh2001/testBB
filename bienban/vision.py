@@ -33,7 +33,13 @@ from .schema import FORM_GROUPS
 from .spec import DATA_KEYS, TITLES
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+#: Model mặc định. Để trống = **tự dò** model mới nhất mà key đang dùng được.
+#: Google khai tử model liên tục (2.0-flash, 2.5-pro…), nên đừng ghim cứng.
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "")
+#: Dùng khi chưa dò được (chưa có key / mất mạng)
+SAFE_MODEL = os.environ.get("GEMINI_SAFE_MODEL", "gemini-2.5-flash")
+#: Số token tối đa cho mỗi lần gọi — Gemini 3 trừ cả token "thinking" vào đây
+MAX_OUTPUT_TOKENS = 32768
 TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", "180"))
 MAX_EDGE = 2000          # px – đủ đọc chữ viết tay, ảnh gửi đi nhỏ
 JPEG_QUALITY = 90
@@ -53,6 +59,9 @@ FORM_DEVICE = {
 
 # Các mã lỗi nên thử bước kế tiếp trong chuỗi dự phòng (model/key khác)
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+#: Thông báo của Google khi model đã bị khai tử (đi kèm HTTP 404)
+_GONE = re.compile(r"no longer available|is not found|does not exist|has been (shut ?down|retired)",
+                   re.I)
 
 
 class GeminiError(RuntimeError):
@@ -257,6 +266,11 @@ def _request(url: str, *, data: dict | None = None, method: str = "GET") -> dict
             raise GeminiBusy(
                 "API key không hợp lệ hoặc không có quyền dùng model này"
                 + (f" ({detail})" if detail else ""), status=exc.code) from exc
+        if exc.code == 404 or _GONE.search(detail):
+            # Model đã bị khai tử với key này (Google đổi tên liên tục) → thử model kế
+            raise GeminiBusy(
+                f"Model không còn dùng được ({detail or 'lỗi 404'})",
+                status=404) from exc
         if exc.code in _RETRY_STATUS:
             reason = {429: "đã vượt hạn mức (429)",
                       500: "lỗi máy chủ (500)", 502: "cổng lỗi (502)",
@@ -283,18 +297,74 @@ def list_models(key: str | None = None) -> list[str]:
         if "generateContent" in methods and name.startswith("gemini"):
             out.append(name)
 
-    def rank(n: str):
-        # ưu tiên flash mới → pro
-        return ("3." in n, "2.5" in n, "flash" in n, "lite" not in n, n)
+    return sorted(out, key=_model_rank, reverse=True)
 
-    return sorted(out, key=rank, reverse=True)
+
+_VER = re.compile(r"gemini-(\d+(?:\.\d+)?)")
+
+
+def _model_rank(name: str) -> tuple:
+    """Xếp model tốt nhất lên đầu: ổn định > preview, bản mới > bản cũ.
+
+    Google đổi tên model liên tục nên phải xếp hạng động, không ghim cứng.
+    Model chuyên dụng (ảnh, TTS, live, embedding…) bị đẩy xuống cuối.
+    """
+    low = name.lower()
+    specialized = any(k in low for k in ("image", "tts", "audio", "live", "embedding",
+                                        "embed", "veo", "imagen", "nano-banana",
+                                        "computer-use", "robotics", "omni", "transcribe"))
+    m = _VER.search(low)
+    ver = float(m.group(1)) if m else 0.0
+    stable = "-preview" not in low and "-exp" not in low
+    return (
+        not specialized,                       # 1. model biết đọc ảnh/chữ trước
+        ver,                                   # 2. đời mới trước (3.x > 2.5)
+        stable,                                # 3. cùng đời: bản ổn định trước
+        "lite" not in low,                     # 4. bản đầy đủ trước bản lite
+        "flash" in low,                        # 5. flash (nhanh, rẻ) trước pro
+        name,
+    )
+
+
+AUTO_MODEL_CACHE: dict[str, str] = {}
+
+
+def auto_model(key: str | None = None) -> str:
+    """Model mới nhất mà **key này** dùng được (dò 1 lần, sau đó lấy cache).
+
+    Nhờ vậy khi Google khai tử model, tool tự chuyển sang model kế tiếp thay vì
+    báo lỗi 404 cho người dùng. Mất mạng / key sai → rơi về :data:`SAFE_MODEL`.
+    """
+    k = resolve_key(key)
+    if k in AUTO_MODEL_CACHE:
+        return AUTO_MODEL_CACHE[k]
+    try:
+        models = list_models(k)
+    except Exception:          # offline / key sai / phản hồi lạ → vẫn phải chạy
+        return SAFE_MODEL
+    best = (models or [SAFE_MODEL])[0]
+    AUTO_MODEL_CACHE[k] = best
+    return best
+
+
+def forget_model(key: str | None = None) -> None:
+    """Xoá cache model (dùng khi model đang dùng vừa bị khai tử)."""
+    if key:
+        AUTO_MODEL_CACHE.pop(key, None)
+    else:
+        AUTO_MODEL_CACHE.clear()
 
 
 def _wire_model(model: str) -> str:
     model = (model or DEFAULT_MODEL).strip().removeprefix("models/")
-    if _RETIRED.match(model):
-        return "gemini-2.5-flash"
+    if model and _RETIRED.match(model):
+        return ""            # tên đã khai tử -> để call_gemini tự dò model mới
     return model
+
+
+def _is_gemini3(model: str) -> bool:
+    """Model thuộc dòng Gemini 3 (có ``thinkingConfig``)."""
+    return bool(re.search(r"gemini-3", (model or "").lower()))
 
 
 def parse_json_loose(text: str) -> dict:
@@ -311,7 +381,10 @@ def parse_json_loose(text: str) -> dict:
                 return json.loads(text[start:end + 1])
             except json.JSONDecodeError:
                 pass
-    raise GeminiError("Gemini trả về không phải JSON hợp lệ")
+    raise GeminiFatal(
+        "Gemini trả về JSON không hợp lệ (có thể bị cắt vì hết token). "
+        "Thử lại với ít ảnh hơn hoặc chọn model flash."
+    )
 
 
 def call_gemini(
@@ -321,7 +394,7 @@ def call_gemini(
     model: str | None = None,
     forms: Iterable[str] | None = None,
     prompt_override: str | None = None,
-    max_tokens: int = 16384,
+    max_tokens: int = MAX_OUTPUT_TOKENS,
     fallbacks: list[str] | None = None,
     alt_keys: list[str] | None = None,
     on_try=None,
@@ -348,30 +421,55 @@ def call_gemini(
     """
     key = resolve_key(key)
     keys = [key] + [k for k in (alt_keys or []) if k and k != key]
-    models: list[str] = []
-    for m in [model or DEFAULT_MODEL] + list(fallbacks or []):
-        m = _wire_model(m)
-        if m and m not in models:
-            models.append(m)
 
-    steps = [(m, k) for k in keys for m in models]     # key chính trước, rồi key dự phòng
+    def _models_for(first_key: str) -> list[str]:
+        """Chuỗi model: model mới nhất (hoặc tên người dùng chọn) → dự phòng."""
+        out: list[str] = []
+        primary = _wire_model(model or DEFAULT_MODEL)
+        if not primary:
+            # Không ai chỉ định model (hoặc tên đã bị khai tử) → hỏi Google xem
+            # key này còn dùng được model nào, rồi mới đến danh sách dự phòng.
+            primary = auto_model(first_key)
+        if primary:
+            out.append(primary)
+        for m in list(fallbacks or []):
+            m = _wire_model(m)
+            if m and m not in out:
+                out.append(m)
+        return out or [SAFE_MODEL]
+
+    def _run(models: list[str]) -> dict:
+        steps = [(m, k) for k in keys for m in models]   # key chính trước
+        nonlocal last
+        for idx, (m, k) in enumerate(steps, start=1):
+            try:
+                return _attempt(images, key=k, model=m, forms=forms,
+                                prompt_override=prompt_override, max_tokens=max_tokens)
+            except GeminiBusy as exc:
+                last = exc
+                if on_try:
+                    on_try(idx, m, "chính" if k == key else "dự phòng", exc)
+                continue
+            except GeminiFatal:
+                raise
+        raise GeminiError(f"Không gọi được model nào (lỗi cuối: {last})") from last
+
     last: GeminiError | None = None
-    for idx, (m, k) in enumerate(steps, start=1):
-        try:
-            return _attempt(images, key=k, model=m, forms=forms,
-                            prompt_override=prompt_override, max_tokens=max_tokens)
-        except GeminiBusy as exc:
-            last = exc
-            if on_try:
-                on_try(idx, m, "chính" if k == key else "dự phòng", exc)
-            continue
-        except GeminiFatal:
+    models = _models_for(key)
+    try:
+        return _run(models)
+    except GeminiError:
+        # Chỉ khi lỗi là "model đã bị khai tử" (404) mới dò lại model mới nhất.
+        # Lỗi khác (429, mất mạng…) thì dò lại cũng vô ích và còn tốn 1 lượt gọi.
+        if not (last and getattr(last, "status", 0) == 404):
             raise
-    assert last is not None
-    raise GeminiError(
-        f"Đã thử {len(steps)} phương án (model/key) nhưng đều thất bại. "
-        f"Lỗi cuối: {last}"
-    ) from last
+        forget_model(key)
+        fresh = auto_model(key)
+        if fresh in models:
+            raise
+        if on_try:
+            on_try(len(models) + 1, fresh, "tự dò", last)
+        return _run([fresh])
 
 
 def _attempt(
@@ -381,7 +479,7 @@ def _attempt(
     model: str,
     forms: Iterable[str] | None = None,
     prompt_override: str | None = None,
-    max_tokens: int = 16384,
+    max_tokens: int = MAX_OUTPUT_TOKENS,
 ) -> dict:
     """Một lần gửi ảnh cho một model + một key."""
     if not images:
@@ -396,14 +494,17 @@ def _attempt(
         parts.append({"text": f"image_index = {i}"})
         parts.append({"inline_data": {"mime_type": mime, "data": b64}})
 
-    payload = {
-        "contents": [{"role": "user", "parts": parts}],
-        "generationConfig": {
-            "temperature": 0.1,
-            "responseMimeType": "application/json",
-            "maxOutputTokens": max_tokens,
-        },
+    gen_cfg: dict = {
+        "temperature": 0.1,
+        "responseMimeType": "application/json",
+        "maxOutputTokens": max(max_tokens, MAX_OUTPUT_TOKENS),
     }
+    if _is_gemini3(model):
+        # Gemini 3 trừ token suy nghĩ vào maxOutputTokens → JSON dài (biên bản 44)
+        # dễ bị cắt cụt. Mức "low" là đủ cho việc đọc ảnh theo mẫu.
+        gen_cfg["thinkingConfig"] = {"thinkingLevel": "low"}
+    payload = {"contents": [{"role": "user", "parts": parts}],
+               "generationConfig": gen_cfg}
     url = f"{GEMINI_BASE}/models/{model}:generateContent?key={key}"
     data = _request(url, data=payload, method="POST")
 
@@ -421,8 +522,13 @@ def _attempt(
     raw = "".join(texts).strip()
     if not raw:
         finish = candidates[0].get("finishReason")
+        hint = ""
+        if finish == "MAX_TOKENS":
+            hint = (" — bị cắt vì hết token (model Gemini 3 dùng token cho phần suy nghĩ). "
+                    "Thử model flash hoặc gửi ít ảnh hơn.")
         raise GeminiFatal(
-            "Gemini trả về nội dung rỗng" + (f" (finishReason: {finish})" if finish else "")
+            "Gemini trả về nội dung rỗng"
+            + (f" (finishReason: {finish})" if finish else "") + hint
         )
     return parse_json_loose(raw)
 

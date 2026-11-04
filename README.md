@@ -173,10 +173,21 @@ tự động từ `bienban/schema.py`, nên danh sách khoá/nhãn trong prompt 
 trùng với form trên màn hình và với mẫu Word. Xem bản đầy đủ:
 `prompts/gemini.md` (hoặc `GET /api/ai/prompt?forms=45`).
 
-Model: bấm **“↻ Lấy danh sách model”** để lấy các model đang hỗ trợ
-`generateContent` từ chính API key của bạn. Model mặc định đặt bằng
-`GEMINI_MODEL` (mặc định `gemini-2.5-flash`); tên model cũ đã bị khai tử
-(`gemini-1.*`, `gemini-3.5-flash`…) được tự chuyển về mặc định.
+**Model: không ghim cứng.** Google khai tử model liên tục (2.0-flash, 2.5-pro…
+báo `404 … no longer available`), nên tool **tự dò** model mới nhất mà key của bạn
+dùng được:
+
+* mở trang (hoặc dán key) → gọi `/api/ai/models` và chọn model tốt nhất còn sống
+  — ưu tiên đời mới → bản ổn định → flash (nhanh, rẻ) → bỏ model chuyên dụng
+  như `-image`, `-tts`, `-live`;
+* nhận dạng mà gặp `404` → tự chuyển model kế tiếp trong chuỗi dự phòng, hết chuỗi
+  thì **dò lại** rồi thử lần cuối;
+* muốn cố định: chọn model trong dropdown (lưu vào trình duyệt), hoặc đặt
+  `GEMINI_MODEL=gemini-3.8-flash`, hoặc `config.json → ai.default_model`.
+
+Với dòng Gemini 3, tool gửi `thinkingConfig: {thinkingLevel: "low"}` và
+`maxOutputTokens: 32768` — token suy nghĩ cũng trừ vào hạn mức nên để mặc định
+dễ bị cắt cụt JSON của biên bản 44.
 
 ### 4.4. API (dùng từ script cũng được)
 
@@ -197,7 +208,7 @@ Model: bấm **“↻ Lấy danh sách model”** để lấy các model đang h
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/ai/recognize \
      -H "X-Gemini-Key: $GEMINI_API_KEY" \
-     -F images=@anh1.jpg -F images=@anh2.jpg -F forms=44,45 -F model=gemini-2.5-flash \
+     -F images=@anh1.jpg -F images=@anh2.jpg -F forms=44,45 \   # bỏ model = máy chủ tự dò
   | python -c "import json,sys; json.dump(json.load(sys.stdin)['data'], open('data.json','w'), ensure_ascii=False)"
 ./.venv/bin/python -m bienban fill data.json -o output
 ```
