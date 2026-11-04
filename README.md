@@ -60,3 +60,7 @@ chmod +x run.sh
 - `app/static/index.html`, `styles.css`, `app.js`: Giao diện Web đối chiếu ảnh – sửa form – xem trước A4.
 
 - `app/static/vendor/`: Thư viện JSZip và docx-preview cùng giấy phép, dùng để dựng bản xem trước từ file Word xuất ra.
+
+### Cấu trúc và số thứ tự trong Word
+
+Tiêu đề, dấu đầu dòng và số thứ tự được ghi trực tiếp vào nội dung Word theo thứ tự từng mẫu; nhờ vậy chúng cũng hiện trong bản xem trước và không phụ thuộc vào bộ đánh số tự động của trình đọc Word. Khi tự thêm, xóa hoặc đổi thứ tự mục trong Word, cần chỉnh lại các số này thủ công. Ví dụ mẫu LBFCO trong PDF gốc dùng I–III cho phần công trình/thông số/kết quả và IV–VI cho tiêu chuẩn/thiết bị/kết luận.

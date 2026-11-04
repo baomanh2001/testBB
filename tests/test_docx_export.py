@@ -162,10 +162,10 @@ def test_mccb_retains_original_standard_section_layout():
     response = client.post('/api/export/docx', json=sample)
     doc = docx.Document(io.BytesIO(response.content))
     paragraphs = [p.text for p in doc.paragraphs]
-    assert 'TIÊU CHUẨN KIỂM ĐỊNH:' in paragraphs
-    idx = paragraphs.index('TIÊU CHUẨN KIỂM ĐỊNH:')
+    assert 'V.\tTIÊU CHUẨN KIỂM ĐỊNH:' in paragraphs
+    idx = paragraphs.index('V.\tTIÊU CHUẨN KIỂM ĐỊNH:')
     assert sample['data']['tieu_chuan_kiem_dinh'] in paragraphs[idx + 1]
-    assert paragraphs[idx + 2].startswith('KẾT LUẬN:')
+    assert paragraphs[idx + 2].startswith('VI.\tKẾT LUẬN:')
 
 
 def test_tu_bu_preserves_row_values_and_order():
@@ -199,3 +199,46 @@ def test_vietnamese_text_and_case_are_preserved():
 def test_sample_mba_discrepancy_is_disclosed():
     sample = client.get('/api/samples?station=dream_mekong').json()['reports'][0]
     assert any('khác' in note and 'nhiệt độ' in note for note in sample['ai_notes'])
+
+
+@pytest.mark.parametrize("station,report_type,headings", [
+    ("egreen", "mba_1p", ["LÝ LỊCH THIẾT BỊ", "QUY CÁCH KỸ THUẬT", "KẾT QUẢ KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("dream_mekong", "mba_3p", ["LÝ LỊCH THIẾT BỊ", "QUY CÁCH KỸ THUẬT", "KẾT QUẢ KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("egreen", "mccb", ["THÔNG TIN CÔNG TRÌNH", "THÔNG SỐ THIẾT BỊ", "KẾT QUẢ KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "TIÊU CHUẨN KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("dream_mekong", "acb", ["THÔNG TIN CÔNG TRÌNH", "THÔNG SỐ THIẾT BỊ", "KẾT QUẢ THỬ NGHIỆM", "THIẾT BỊ THỬ NGHIỆM", "TIÊU CHUẨN THỬ NGHIỆM", "KẾT LUẬN"]),
+    ("egreen", "la", ["THÔNG TIN CÔNG TRÌNH", "THÔNG SỐ THIẾT BỊ", "KẾT QUẢ KIỂM ĐỊNH", "TIÊU CHUẨN KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("egreen", "fco", ["THÔNG TIN CÔNG TRÌNH", "THÔNG SỐ THIẾT BỊ", "KẾT QUẢ KIỂM ĐỊNH", "TIÊU CHUẨN KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("dream_mekong", "lbfco", ["THÔNG TIN CÔNG TRÌNH", "THÔNG SỐ THIẾT BỊ", "KẾT QUẢ KIỂM ĐỊNH", "TIÊU CHUẨN KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("egreen", "dtnd", ["THÔNG TIN CÔNG TRÌNH", "KẾT QUẢ THỬ NGHIỆM", "THIẾT BỊ THỬ NGHIỆM", "GHI CHÚ"]),
+    ("dream_mekong", "cap_ngam", ["THÔNG TIN CÔNG TRÌNH", "THÔNG SỐ THIẾT BỊ", "KẾT QUẢ KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "KẾT LUẬN"]),
+    ("dream_mekong", "tu_bu", ["THÔNG TIN CÔNG TRÌNH", "KẾT QUẢ KIỂM ĐỊNH", "THIẾT BỊ KIỂM ĐỊNH", "TIÊU CHUẨN KIỂM ĐỊNH", "KẾT LUẬN"]),
+])
+def test_visible_roman_headings_and_accents(station, report_type, headings):
+    sample = next(r for r in client.get('/api/samples', params={'station': station}).json()['reports'] if r['report_type'] == report_type)
+    result = client.post('/api/export/docx', json=sample)
+    assert result.status_code == 200
+    document = docx.Document(io.BytesIO(result.content))
+    roman = ['I.', 'II.', 'III.', 'IV.', 'V.', 'VI.']
+    for number, heading in zip(roman, headings):
+        expected = f'{number}\t{heading}'
+        paragraph = next(p for p in document.paragraphs if p.text.startswith(expected))
+        assert paragraph.runs[0].bold  # Visible section number is bold too.
+        assert paragraph.runs[1].bold  # Vietnamese heading is explicitly bold.
+        assert not paragraph._p.xpath('./w:pPr/w:numPr')  # No duplicate auto number.
+    assert any(p.text.startswith('-\tTên công trình: ') for p in document.paragraphs)
+
+
+def test_lbfco_numbered_subsections_and_table_match_reference():
+    sample = next(r for r in client.get('/api/samples').json()['reports'] if r['report_type'] == 'lbfco')
+    result = client.post('/api/export/docx', json=sample)
+    document = docx.Document(io.BytesIO(result.content))
+    paragraphs = [p.text for p in document.paragraphs]
+    assert '1.\tKiểm tra bên ngoài: Bình thường\t- Số lượng: 03 Bộ' in paragraphs
+    assert '2.\tKết quả kiểm định:' in paragraphs
+    table = document.tables[1]
+    assert len(table.rows) == 5
+    assert [table.cell(i, 0).text for i in (2, 3, 4)] == ['LBFCO 01', 'LBFCO 02', 'LBFCO 03']
+    assert [c.text for c in table.rows[2].cells] == ['LBFCO 01', '>10000', '>10000', '60', '50', '5', 'Đạt']
+    assert any(p.startswith('IV.\tTIÊU CHUẨN KIỂM ĐỊNH:') for p in paragraphs)
+    assert any(p.startswith('V.\tTHIẾT BỊ KIỂM ĐỊNH:') for p in paragraphs)
+    assert any(p.startswith('VI.\tKẾT LUẬN:') for p in paragraphs)

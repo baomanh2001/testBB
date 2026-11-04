@@ -259,6 +259,95 @@ def _decode_custom_signature(data_url: Optional[str]) -> Optional[bytes]:
         return None
 
 
+def _roman_number(number: int) -> str:
+    parts = ((1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+             (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+             (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"))
+    result = []
+    for value, text in parts:
+        count, number = divmod(number, value)
+        result.append(text * count)
+    return "".join(result)
+
+
+def _materialize_body_numbering(root: etree._Element, numbering_xml: bytes) -> None:
+    """Make the template's list labels literal, so Word and HTML agree on them.
+
+    The supplied templates use single-level Roman, decimal and hyphen lists.
+    Preserve their paragraph indentation and other tabs; replace only supported
+    body list labels, leaving any other numbering untouched.
+    """
+    numbering = etree.fromstring(numbering_xml)
+    definitions = {}
+    for num in numbering.findall("w:num", NS):
+        num_id = num.get(_w("numId"))
+        abstract_id = num.find("w:abstractNumId", NS)
+        if abstract_id is None:
+            continue
+        abstract = numbering.find(f"w:abstractNum[@w:abstractNumId='{abstract_id.get(_w('val'))}']", NS)
+        if abstract is None:
+            continue
+        level = abstract.find("w:lvl[@w:ilvl='0']", NS)
+        if level is None:
+            continue
+        fmt = level.find("w:numFmt", NS)
+        text = level.find("w:lvlText", NS)
+        start = level.find("w:start", NS)
+        override = num.find("w:lvlOverride[@w:ilvl='0']/w:startOverride", NS)
+        definitions[num_id] = (
+            fmt.get(_w("val")) if fmt is not None else "",
+            text.get(_w("val")) if text is not None else "",
+            int((override if override is not None else start).get(_w("val"), "1")) if override is not None or start is not None else 1,
+        )
+
+    counters = {}
+    for paragraph in root.findall("w:body/w:p", NS):
+        ppr = paragraph.find("w:pPr", NS)
+        numpr = ppr.find("w:numPr", NS) if ppr is not None else None
+        if numpr is None:
+            continue
+        num = numpr.find("w:numId", NS)
+        level = numpr.find("w:ilvl", NS)
+        if num is None or (level is not None and level.get(_w("val")) != "0"):
+            continue
+        num_id = num.get(_w("val"))
+        fmt, text, start = definitions.get(num_id, ("", "", 1))
+        if fmt == "bullet" and text == "-":
+            label = "-"
+        elif fmt in ("upperRoman", "decimal") and text == "%1.":
+            count = counters.get(num_id, start)
+            counters[num_id] = count + 1
+            label = (_roman_number(count) if fmt == "upperRoman" else str(count)) + "."
+        else:
+            continue
+
+        # Insert a real number/bullet as text, retaining the original run style.
+        ppr.remove(numpr)
+        first_run = paragraph.find("w:r", NS)
+        run = _make_run(label + "\t", bold=False)
+        old_properties = first_run.find("w:rPr", NS) if first_run is not None else None
+        if old_properties is not None:
+            run.replace(run.find("w:rPr", NS), copy.deepcopy(old_properties))
+        paragraph.insert(list(paragraph).index(first_run) if first_run is not None else len(paragraph), run)
+
+        # List-label tabs used to be implicit in Word's numbering properties.
+        # Add an explicit stop at the existing left indent, without changing
+        # the second-column stops already present in the template.
+        ind = ppr.find("w:ind", NS)
+        left = ind.get(_w("left")) if ind is not None else None
+        if left and int(left) > 0:
+            tabs = ppr.find("w:tabs", NS)
+            if tabs is None:
+                tabs = etree.Element(_w("tabs"))
+                insert_at = next((i for i, el in enumerate(ppr) if el.tag in {_w("spacing"), _w("ind"), _w("jc"), _w("rPr")}), len(ppr))
+                ppr.insert(insert_at, tabs)
+            if not any(t.get(_w("pos")) == left for t in tabs.findall("w:tab", NS)):
+                tab = etree.Element(_w("tab"))
+                tab.set(_w("val"), "left")
+                tab.set(_w("pos"), left)
+                tabs.insert(0, tab)
+
+
 def _repack_docx(
     template_path: str,
     doc_xml_root: etree._Element,
@@ -267,8 +356,9 @@ def _repack_docx(
 ) -> bytes:
     extra_xml_overrides = extra_xml_overrides or {}
     out_buf = io.BytesIO()
-    doc_bytes = etree.tostring(doc_xml_root, xml_declaration=True, encoding="UTF-8", standalone="yes")
     with zipfile.ZipFile(template_path, "r") as zin, zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
+        _materialize_body_numbering(doc_xml_root, zin.read("word/numbering.xml"))
+        doc_bytes = etree.tostring(doc_xml_root, xml_declaration=True, encoding="UTF-8", standalone="yes")
         for item in zin.infolist():
             fname = item.filename
             if fname == "word/document.xml":
