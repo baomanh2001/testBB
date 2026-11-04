@@ -473,6 +473,32 @@ class TestVision:
             assert label in prompt
         assert "MÁY BIẾN ÁP 1 PHA" in prompt
 
+    def test_prompt_distinguishes_44_and_49(self):
+        """3 pha phải có neo nhận diện riêng, không lẫn với MBA 1 pha."""
+        from bienban.vision import build_prompt
+
+        prompt = build_prompt(["44", "49"])
+        # mỗi mẫu có dòng nhận diện
+        assert "NHẬN DIỆN MẪU 44" in prompt and "NHẬN DIỆN MẪU 49" in prompt
+        assert "Dyn11" in prompt and "K1/K2/K3" in prompt
+        assert "TUYỆT ĐỐI không trả về report_type 44" in prompt
+        # quy tắc đọc bảng + tự kiểm chéo
+        for rule in ("Cao – Vỏ", "Hạ 1 – Hạ 2", "Kht ≈ R60/R15", "Ô gộp"):
+            assert rule in prompt, rule
+        # report_type chỉ gồm mẫu đang chọn (trước đây cứng 44–48)
+        line = next(l for l in prompt.splitlines() if '"report_type"' in l)
+        assert '"44"' in line and '"49"' in line and '"48"' not in line
+
+    def test_prompt_field_hints_say_where_to_read(self):
+        from bienban.vision import build_prompt
+
+        prompt = build_prompt(["49"])
+        assert "ĐỌC Ở:" in prompt
+        # K1 phải phân biệt với Kht
+        assert "KHÔNG phải Kht" in prompt
+        # ví dụ bảng 3 pha có thật
+        assert "VÍ DỤ BẢNG 3 PHA" in prompt and "57,759" in prompt
+
     def test_prompt_subset(self):
         from bienban.vision import build_prompt
 
