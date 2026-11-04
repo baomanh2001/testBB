@@ -1,4 +1,4 @@
-"""Web UI: dán JSON → xem trước biên bản → tải file .docx.
+"""Web UI: ảnh → Gemini đọc → sửa → xem trước → tải file .docx.
 
 Chạy local::
 
@@ -17,6 +17,7 @@ Facebook…):
 from __future__ import annotations
 
 import io
+import os
 import sys
 import tempfile
 import time
@@ -30,8 +31,10 @@ from flask import (Flask, abort, jsonify, render_template, request, send_file,
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from bienban import vision                               # noqa: E402
 from bienban.fill import load_config, render_all          # noqa: E402
 from bienban.preview import PAGE_CSS, docx_to_html        # noqa: E402
+from bienban.schema import web_schema                     # noqa: E402
 from bienban.spec import DATA_KEYS, TEMPLATES, TITLES     # noqa: E402
 from bienban.validate import validate                     # noqa: E402
 
@@ -41,9 +44,37 @@ STORE.mkdir(parents=True, exist_ok=True)
 STORE_TTL = 60 * 60 * 6          # dọn file cũ sau 6 giờ
 
 app = Flask(__name__, template_folder=str(ROOT / "web" / "templates"))
-app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024   # ảnh điện thoại
+# Sửa template là thấy ngay, không phải khởi động lại server
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
 
 SAMPLE = ROOT / "samples" / "e-green-01112026.json"
+
+
+_LOGO_CACHE = ""            # cache data-URI logo công ty
+
+
+def _brand_logo() -> str:
+    """Logo công ty (lấy từ file mẫu Word) dạng data-URI, cache 1 lần."""
+    global _LOGO_CACHE
+    if _LOGO_CACHE:
+        return _LOGO_CACHE
+    try:
+        import base64
+
+        import docx
+
+        doc = docx.Document(str(ROOT / "templates" / TEMPLATES["45"]))
+        for rel in doc.part.rels.values():
+            if "image" in rel.reltype and str(rel.target_part.partname).endswith(".jpeg"):
+                blob = rel.target_part.blob
+                _LOGO_CACHE = "data:image/jpeg;base64," + base64.b64encode(blob).decode()
+                break
+    except Exception:                                     # pragma: no cover
+        _LOGO_CACHE = ""
+        return ""
+    return _LOGO_CACHE
 
 
 # --------------------------------------------------------------------------- #
@@ -82,6 +113,125 @@ def _problems_json(problems) -> list[dict]:
     return [{"level": p.level, "where": p.where, "message": p.message} for p in problems]
 
 
+def _gemini_key() -> str | None:
+    """Key do người dùng nhập (header) hoặc trong biến môi trường; không lưu lại."""
+    return (request.headers.get("X-Gemini-Key") or "").strip() or None
+
+
+# --------------------------------------------------------------------------- #
+# API: nhận dạng ảnh bằng Gemini
+# --------------------------------------------------------------------------- #
+@app.get("/api/ai/schema")
+def api_ai_schema():
+    return jsonify({
+        "ok": True,
+        "schema": web_schema(),
+        "forms": [{"key": k, "title": TITLES[k], "data_key": DATA_KEYS[k]}
+                  for k in sorted(TEMPLATES)],
+        "has_env_key": bool(os.environ.get("GEMINI_API_KEY")),
+        "default_model": vision.DEFAULT_MODEL,
+        "max_images": vision.MAX_IMAGES,
+    })
+
+
+@app.get("/api/ai/prompt")
+def api_ai_prompt():
+    """Prompt thật sẽ gửi Gemini – để người dùng đọc/kiểm tra."""
+    forms = [f for f in (request.args.get("forms") or "").split(",") if f in TEMPLATES] or None
+    return jsonify({"ok": True, "prompt": vision.build_prompt(forms)})
+
+
+@app.get("/api/ai/status")
+def api_ai_status():
+    """Cho giao diện biết đã có key trên server chưa (không trả key)."""
+    has = bool(os.environ.get("GEMINI_API_KEY"))
+    return jsonify({"ok": True, "has_env_key": has,
+                    "default_model": vision.DEFAULT_MODEL,
+                    "max_images": vision.MAX_IMAGES,
+                    "hint": ("Server đã có GEMINI_API_KEY - không cần nhập key."
+                             if has else
+                             "Chưa có key: nhập trên giao diện hoặc đặt "
+                             "GEMINI_API_KEY khi chạy server.")})
+
+
+@app.get("/api/ai/models")
+def api_ai_models():
+    """Danh sách model hỗ trợ generateContent (cho dropdown)."""
+    try:
+        models = vision.list_models(_gemini_key())
+    except vision.GeminiError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not models:
+        models = [vision.DEFAULT_MODEL]
+    return jsonify({"ok": True, "models": models,
+                    "default": vision.DEFAULT_MODEL, "selected": vision.DEFAULT_MODEL})
+
+
+@app.post("/api/ai/recognize")
+def api_ai_recognize():
+    """Nhận ảnh biên bản → JSON đã chuẩn hoá theo đúng cấu trúc của tool."""
+    uploads = [f for f in request.files.getlist("images") if f and f.filename]
+    if not uploads:
+        return jsonify({"ok": False, "error": "Chưa chọn ảnh nào"}), 400
+    if len(uploads) > vision.MAX_IMAGES:
+        return jsonify({"ok": False,
+                        "error": f"Chỉ gửi tối đa {vision.MAX_IMAGES} ảnh mỗi lần"}), 400
+    blobs = [f.read() for f in uploads]
+    if any(not b for b in blobs):
+        return jsonify({"ok": False, "error": "Có ảnh rỗng hoặc đọc lỗi"}), 400
+
+    forms = [f for f in (request.form.get("forms") or "").split(",") if f]
+    forms = [f for f in forms if f in TEMPLATES] or None
+    model = request.form.get("model") or vision.DEFAULT_MODEL
+
+    try:
+        raw = vision.call_gemini(blobs, key=_gemini_key(), model=model, forms=forms)
+        data = vision.normalize_ai_result(raw, forms=forms)
+    except vision.GeminiError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:                                  # pragma: no cover
+        app.logger.exception("gemini failed")
+        return jsonify({"ok": False, "error": f"Lỗi khi gọi Gemini: {exc}"}), 500
+
+    if not any(k in data for k in DATA_KEYS.values()):
+        return jsonify({
+            "ok": False,
+            "error": "Gemini không nhận ra biên bản nào trong ảnh. Thử ảnh rõ hơn "
+                     "hoặc chọn đúng mẫu cần nhận dạng.",
+            "notes": data.get("_ai", {}).get("notes", []),
+            "raw": raw,
+        }), 422
+
+    problems = validate(data)
+    return jsonify({
+        "ok": True,
+        "data": data,
+        "model": model,
+        "notes": data.get("_ai", {}).get("notes", []),
+        "sources": data.get("_ai", {}).get("sources", {}),
+        "blocks": [k for k in DATA_KEYS.values() if k in data],
+        "problems": _problems_json(problems),
+    })
+
+
+@app.post("/api/normalize")
+def api_normalize():
+    """Chuyển JSON bất kỳ (kể cả JSON do AI trả về) về cấu trúc chuẩn của tool."""
+    raw = request.get_json(silent=True)
+    if not isinstance(raw, dict):
+        return jsonify({"ok": False, "error": "JSON không hợp lệ"}), 400
+    reports = raw.get("reports")
+    if not isinstance(reports, list):
+        reports = [{"report_type": f, "data": raw[DATA_KEYS[f]]}
+                   for f in sorted(TEMPLATES) if isinstance(raw.get(DATA_KEYS[f]), dict)]
+    data = vision.normalize_ai_result({
+        "thong_tin_chung": raw.get("thong_tin_chung") or {},
+        "reports": reports,
+        "context_photos": raw.get("_ai", {}).get("context", []) if isinstance(raw.get("_ai"), dict) else [],
+    })
+    return jsonify({"ok": True, "data": data})
+
+
 # --------------------------------------------------------------------------- #
 # Trang
 # --------------------------------------------------------------------------- #
@@ -93,7 +243,11 @@ def index():
         sample=SAMPLE.read_text(encoding="utf-8"),
         forms=[{"key": k, "title": TITLES[k], "file": TEMPLATES[k],
                 "data_key": DATA_KEYS[k]} for k in sorted(TEMPLATES)],
+        schema=web_schema(),
+        logo=_brand_logo(),
         css=PAGE_CSS,
+        default_model=vision.DEFAULT_MODEL,
+        max_images=vision.MAX_IMAGES,
     )
 
 
@@ -199,7 +353,5 @@ def preview_page(token: str, name: str):
 
 
 if __name__ == "__main__":
-    import os
-
     port = int(os.environ.get("PORT", "8000"))
     app.run(host="0.0.0.0", port=port, debug=False)

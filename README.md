@@ -59,27 +59,116 @@ Kết quả trong `output/`:
 48_50481126BBTC.docx
 ```
 
-## 3. Web UI (dán JSON → **xem trước** → tải file)
+## 3. Web UI (ảnh → AI đọc → **sửa** → xem trước → tải file)
 
 ```bash
+# có API key Gemini trên server (khuyến nghị)
+export GEMINI_API_KEY="AIza..."
 ./.venv/bin/python web/app.py          # http://127.0.0.1:8000
+
+# hoặc không đặt gì: dán key vào ô “API key Gemini” trên giao diện
+./.venv/bin/python web/app.py
 PORT=8080 ./.venv/bin/python web/app.py
 ```
 
-Bấm **“Xem trước & sinh biên bản”** là thấy ngay **bản in** của từng biên bản
-đúng như file Word sẽ xuất ra (logo, bảng tiêu đề SỐ/NGÀY, đánh số I/II/III,
-bảng kẻ gộp ô, số liệu, chữ ký, footer) — soát xong mới tải file:
+### 3.1. Giao diện: 3 bước, sáng, theo bộ nhận diện công ty
 
-* tab **44 … 48** để chuyển nhanh giữa 5 biên bản
-* nút **⬇ Tải** trên từng file, **⬇ Tải tất cả (.zip)**
-* **Tab riêng** mở bản xem trước toàn trang (in ra PDF được nếu cần)
+Thanh trên cùng mang **logo thật lấy từ file mẫu Word** (không phải ảnh chép
+tay, nên đổi logo công ty là giao diện đổi theo), màu xanh `#241a63` + đỏ
+`#d81f26` đúng hai màu trong logo. Dưới đó là thanh **3 bước** luôn hiện để biết
+mình đang ở đâu:
+
+```
+1 Chọn ảnh  →  2 Soát & sửa dữ liệu  →  3 Xem trước & tải Word
+```
+
+Các tiện ích khi dùng thật ngoài hiện trường:
+
+* nút **A+** phóng to toàn bộ chữ và ô nhập (nhớ lựa chọn cho lần sau);
+* nút **🖨 In / PDF** in bản xem trước đang mở (hoặc mở tab riêng);
+* mọi ô nhập đều có nhãn (đọc được bằng trình đọc màn hình), tab/nút bấm được
+  bằng bàn phím, đóng hộp thoại bằng `Esc`;
+* màu chữ đạt chuẩn tương phản WCAG AA trên nền sáng.
+
+### 3.2. Ba bước trên giao diện
+
+**Bước 1 – Ảnh.** Kéo–thả hoặc bấm chọn ảnh chụp biên bản viết tay (JPG/PNG,
+tối đa 24 ảnh/lần). Ảnh được thu nhỏ còn cạnh dài 2000 px ngay trên server
+trước khi gửi Google (nhanh, rẻ, vẫn đủ nét đọc chữ tay).
+
+**Bước 2 – Nhận dạng.** Chọn model rồi bấm **“✨ Nhận dạng ảnh → điền form”**.
+Server gọi Gemini (`generateContent`, `responseMimeType: application/json`,
+`temperature 0.1`) rồi **chuẩn hoá** kết quả về đúng JSON của tool. Mọi ô hiện
+ra trong form để soát:
+
+* ô chữ / số / ngày / ô chọn (Lý do kiểm định, Kết quả, Vật liệu… **vẫn gõ
+  được giá trị ngoài danh sách**);
+* dãy số (5 nấc tỉ số biến áp, R một chiều) tách thành **từng ô một nấc** —
+  không phải gõ dãy ngăn bằng dấu phẩy (dấu phẩy trong tiếng Việt là dấu thập
+  phân, gõ dãy sẽ sai);
+* bảng kết quả (MCCB / LA / FCO / điện trở nối đất): **+ Thêm dòng**, **✕ Xoá
+  dòng**; sửa dòng thì `Số lượng` tự cập nhật (`01`, `02`…);
+* thanh ghi chú hiện `ai_notes` — những chỗ AI **không chắc** (số mờ, chữ bị
+  sửa…) để người dùng kiểm tra trước;
+* nút **“+ Thêm biên bản khác”** nếu ảnh thiếu một tờ (thêm mẫu 46 khi AI chỉ
+  đọc ra 44/45…).
+
+**Bước 3 – Xem trước & tải.** Bấm **“Xem trước & sinh biên bản”** là thấy ngay
+**bản in** đúng như file Word sẽ xuất ra (logo, bảng SỐ/NGÀY, đánh số I/II/III,
+bảng kẻ gộp ô, số liệu, chữ ký, footer) — soát xong mới tải:
+
+* tab **44 … 48** chuyển nhanh giữa các biên bản
+* **⬇ Tải** từng file, **⬇ Tải tất cả (.zip)**, **Tab riêng** để in ra PDF
 
 > Vì sao tải bằng link `/download/<token>/<file>` chứ không phải blob: trong
 > iframe preview (Arena, Zalo, Facebook…) nhiều trình duyệt chặn tải file sinh
 > ra bằng `URL.createObjectURL`. Link GET thật thì luôn tải được. File được
 > lưu tạm 6 giờ rồi tự dọn.
 
-Xem trước dùng được cả từ Python:
+### 3.3. API key — không bao giờ gửi xuống trình duyệt
+
+| Cách | Ưu điểm |
+|---|---|
+| `GEMINI_API_KEY` trong biến môi trường | key không rời khỏi server, người dùng không phải nhập |
+| Dán vào ô “API key Gemini” | dùng nhanh khi chưa muốn cấu hình server; key chỉ đi theo header `X-Gemini-Key`, **không ghi log, không lưu ổ đĩa**, và được lưu trong `localStorage` để lần sau khỏi nhập lại |
+
+Prompt gửi Gemini **hiện trên giao diện** (nút “Xem prompt gửi AI”) và sinh
+tự động từ `bienban/schema.py`, nên danh sách khoá/nhãn trong prompt luôn
+trùng với form trên màn hình và với mẫu Word. Xem bản đầy đủ:
+`prompts/gemini.md` (hoặc `GET /api/ai/prompt?forms=45`).
+
+Model: bấm **“↻ Lấy danh sách model”** để lấy các model đang hỗ trợ
+`generateContent` từ chính API key của bạn. Model mặc định đặt bằng
+`GEMINI_MODEL` (mặc định `gemini-2.5-flash`); tên model cũ đã bị khai tử
+(`gemini-1.*`, `gemini-3.5-flash`…) được tự chuyển về mặc định.
+
+### 3.4. API (dùng từ script cũng được)
+
+| Endpoint | Việc |
+|---|---|
+| `GET /api/ai/schema` | cấu trúc form (nhóm, ô, bảng) để dựng UI khác |
+| `GET /api/ai/status` | đã có key trên server chưa (không trả key) |
+| `GET /api/ai/models` | danh sách model khả dụng |
+| `GET /api/ai/prompt?forms=44,45` | prompt thật sẽ gửi Gemini |
+| `POST /api/ai/recognize` | `multipart/form-data`: `images` (nhiều ảnh), `model`, `forms` → `{ok, data, notes, blocks, problems}` |
+| `POST /api/normalize` | JSON bất kỳ → JSON chuẩn của tool (dùng cho dữ liệu cũ) |
+| `POST /api/validate` | kiểm tra dữ liệu trước khi in |
+| `POST /api/render` | sinh biên bản → `{token, files, previews, zip_url}` |
+| `GET /download/<token>/<file>` · `/preview/<token>/<file>` | tải / xem trước |
+
+`data` trả về từ `/api/ai/recognize` dùng được ngay cho `/api/render`:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/ai/recognize \
+     -H "X-Gemini-Key: $GEMINI_API_KEY" \
+     -F images=@anh1.jpg -F images=@anh2.jpg -F forms=44,45 -F model=gemini-2.5-flash \
+  | python -c "import json,sys; json.dump(json.load(sys.stdin)['data'], open('data.json','w'), ensure_ascii=False)"
+./.venv/bin/python -m bienban fill data.json -o output
+```
+
+### 3.5. Xem trước bằng Python
+
+Hàm dựng bản xem trước dùng lại được ở nơi khác:
 
 ```python
 from bienban.preview import docx_to_html
@@ -89,8 +178,10 @@ html = docx_to_html("output/45_50451126BBTC.docx")   # khối HTML + logo base64
 ## 4. JSON đầu vào
 
 Xem `samples/e-green-01112026.json` (dữ liệu thật từ 7 ảnh biên bản viết tay +
-1 ảnh công tơ) và `prompts/extract.md` (prompt để LLM đọc ảnh xuất ra đúng
-cấu trúc này).
+1 ảnh công tơ). Prompt để LLM đọc ảnh xuất ra đúng cấu trúc này nằm trong
+`prompts/extract.md` (bản viết tay, để đọc hiểu) và được **sinh tự động** từ
+`bienban/schema.py` ở `prompts/gemini.md` (bản thật sự gửi đi — sửa schema là
+prompt đổi theo, không bị lệch form).
 
 ```jsonc
 {
@@ -183,12 +274,19 @@ Bản .doc gốc được giữ tại `legacy/44 BB MBA 1P 50KVA.doc` để đ�
 ## 8. Kiểm thử
 
 ```bash
-./.venv/bin/python -m pytest -q      # 47 test
+./.venv/bin/python -m pytest -q      # 79 test
 ```
 
 Bao gồm: chuẩn hoá ngày/số, nhận dạng nhãn, nội dung từng biên bản 44–48,
 giữ header/footer + ảnh logo, chế độ in đậm/in hoa, validate dữ liệu, dựng bản
-xem trước HTML (logo, gộp ô, số liệu) và API web (render / download / preview).
+xem trước HTML (logo, gộp ô, số liệu), API web (render / download / preview),
+**nhận dạng ảnh Gemini** (prompt, gọi API, parse JSON, chuẩn hoá dữ liệu AI trả
+về, endpoint `/api/ai/*`), **bảng nhiều dòng** (`rows[]` → Word: thêm/bớt dòng
+cho 45/46/47/48) và **giao diện** (logo lấy từ mẫu Word, CSS thương hiệu, mọi ô
+của 5 mẫu đều sửa được, chữ lớn, in ấn).
+
+Kiểm thử Gemini **không** gọi mạng thật: `vision._request` được thay bằng hàm
+giả lập, nên chạy offline vẫn đủ và không tốn quota.
 
 ## 9. Cấu trúc thư mục
 
@@ -201,13 +299,17 @@ bienban/            # thư viện chính
   fill.py           #   điều phối + điền bảng + chữ ký + kết luận
   validate.py       #   kiểm tra JSON trước khi điền
   preview.py        #   dựng bản xem trước HTML từ file .docx
+  schema.py         #   đặc tả ô sửa được + bảng (dùng cho UI và prompt AI)
+  vision.py         #   Gemini: prompt, gọi API, chuẩn hoá JSON trả về
   __main__.py       #   CLI (fill / check / template / forms)
 templates/          # 5 mẫu Word đang dùng
 legacy/             # bản .doc gốc của mẫu 44
 samples/            # JSON mẫu (dữ liệu thật E-GREEN 01/11/2026)
-prompts/extract.md  # prompt trích xuất ảnh → JSON
+prompts/extract.md  # prompt trích xuất ảnh → JSON (bản viết tay, để đọc)
+prompts/gemini.md   # prompt THẬT gửi Gemini (sinh từ schema.py)
 tools/              # script dựng lại mẫu 44
 web/                # Flask UI
+  static/app.css    #   giao diện (bộ nhận diện, chữ lớn, in ấn)
 tests/              # pytest
 output/             # file .docx sinh ra (đã .gitignore)
 ```

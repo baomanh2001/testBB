@@ -65,7 +65,8 @@ REQUIRED_FIELDS = {
     ],
     "46": [
         ("so_bien_ban", True, "Số biên bản"),
-        ("chi_danh", True, "Chỉ danh LA"),
+        # Chỉ danh để trống được: bộ điền tự ghép "LA <U>-<I xả>" (derive_values)
+        ("chi_danh", False, "Chỉ danh LA"),
         ("vat_lieu", True, "Vật liệu cách điện"),
         ("dien_ap_dinh_muc", True, "Điện áp định mức"),
         ("mcov", True, "MCOV"),
@@ -73,7 +74,8 @@ REQUIRED_FIELDS = {
     ],
     "47": [
         ("so_bien_ban", True, "Số biên bản"),
-        ("chi_danh", True, "Chỉ danh FCO"),
+        # Chỉ danh để trống được: bộ điền tự ghép "FCO – <dòng định mức>"
+        ("chi_danh", False, "Chỉ danh FCO"),
         ("vat_lieu", True, "Vật liệu cách điện"),
         ("dien_ap_dinh_muc", True, "Điện áp định mức"),
         ("dong_dinh_muc", True, "Dòng định mức"),
@@ -137,6 +139,35 @@ def _check_series(values, where: str, problems: list[Problem], expect: int = 5):
             )
 
 
+# --------------------------------------------------------------------------- #
+# Dạng dữ liệu mới: bảng là ``{"rows": [...]}``
+# --------------------------------------------------------------------------- #
+def _rows(value) -> list[dict] | None:
+    if isinstance(value, dict) and isinstance(value.get("rows"), list):
+        return [r for r in value["rows"] if isinstance(r, dict)]
+    if isinstance(value, list) and value and all(isinstance(r, dict) for r in value):
+        return value
+    return None
+
+
+def _row_field_problem(block: dict, field: str, value, label: str,
+                       problems: list[Problem], where: str) -> bool:
+    """True nếu ``field`` đã được thoả bởi ít nhất 1 dòng của bảng."""
+    rows = _rows(block.get("rows"))
+    if not rows:
+        return False
+    key = {
+        "r_cach_dien_Mohm": "rcd_close", "r_tiep_xuc_uohm": "rtx_a",
+        "so_tem": "so_tem", "chi_danh": "chi_danh", "gia_tri_do_Ohm": "gia_tri_do",
+        "loai_tiep_dat": "loai_tiep_dat", "ket_noi_trung_tinh": "ket_noi_trung_tinh",
+        "thiet_bi_do": "thiet_bi_do",
+    }.get(field, field)
+    if any((r.get(key) or "").strip() for r in rows):
+        problems.append(Problem("warn", where, f"Lấy {label} từ bảng kết quả thay vì ô riêng"))
+        return True
+    return False
+
+
 def validate(data: dict) -> list[Problem]:
     problems: list[Problem] = []
     if not isinstance(data, dict):
@@ -169,8 +200,16 @@ def validate(data: dict) -> list[Problem]:
             value = block.get(field)
             if value in (None, "", [], {}):
                 if required:
-                    problems.append(Problem("error", f"{key}.{field}", f"Thiếu {label}"))
+                    where = f"{key}.{field}"
+                    if _row_field_problem(block, field, value, label, problems, where):
+                        continue
+                    problems.append(Problem("error", where, f"Thiếu {label}"))
                 continue
+        if form in ("45", "46", "47") and not (block.get("chi_danh") or "").strip():
+            if not _rows(block.get("rows")):
+                problems.append(Problem(
+                    "warn", f"{key}.chi_danh",
+                    "Để trống – sẽ tự ghép từ hiệu/loại + dòng định mức"))
         if "so_bien_ban" in block:
             so = str(block["so_bien_ban"])
             if not re.search(r"/BB-", so):

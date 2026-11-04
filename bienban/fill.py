@@ -33,6 +33,7 @@ from .normalize import (
     quantity_both,
 )
 from .ooxml import cell_text, para_text, set_cell_text, set_para_text
+from .schema import FORM_GROUPS
 from .spec import (DATA_KEYS, DOC_KIND, LABELS, TABLE_HEADER_ROWS,
                    TABLE_PROBES, TEMPLATES, TITLES)
 
@@ -218,11 +219,93 @@ def _put(tc, text, bold=None):
     set_cell_text(tc, str(text), bold=bold)
 
 
+def _put_force(tc, text, bold=None):
+    """Ghi cả giá trị rỗng (dòng mới thêm vào phải sạch dữ liệu cũ)."""
+    set_cell_text(tc, "" if text is None else str(text), bold=bold)
+
+
+# --------------------------------------------------------------------------- #
+# Dữ liệu dạng bảng mới (``{"rows": [...]}``) – dùng chung cho mọi bảng
+# --------------------------------------------------------------------------- #
+_NUMBER_TYPES = {"number", "code"}
+
+
+def table_spec(form: str, key: str) -> dict | None:
+    """Định nghĩa bảng theo khoá dữ liệu (``rows``, ``r_cach_dien_Mohm``…)."""
+    tables = [g["table"] for g in FORM_GROUPS.get(form, []) if g.get("table")]
+    for t in tables:
+        if t["key"] == key:
+            return t
+    # khoá tra theo bảng Word (``la``, ``mccb``…) nhưng dữ liệu nằm ở ``rows``
+    row_tables = [t for t in tables if t.get("kind") == "rows"]
+    if len(row_tables) == 1:
+        return row_tables[0]
+    return None
+
+
+def _cell_value(col: dict, raw) -> str:
+    if raw in (None, ""):
+        return ""
+    if col.get("type") in _NUMBER_TYPES:
+        return norm_number(raw) if col.get("type") == "number" else digits_only(raw)
+    return norm_text(raw)
+
+
+def _clean_row(table: dict, row: dict, index: int) -> list[str]:
+    """Đổi 1 dòng (object) thành list giá trị đúng thứ tự cột của bảng Word."""
+    vals: list[str] = []
+    for col in table["columns"]:
+        vals.append(_cell_value(col, row.get(col["key"])))
+    if table.get("stt"):
+        stt = digits_only(row.get("stt")) or str(index + 1)
+        vals.insert(0, stt)
+    return vals
+
+
+def _fixed_row(table: dict, row: dict) -> list[str]:
+    return [_cell_value(c, row.get(c["key"])) for c in table["columns"]]
+
+
+def _rows_of(block: dict, key: str) -> list[dict] | None:
+    """Đọc ``{"rows": [...]}``; chấp nhận cả ``{".....rows": [...]}``."""
+    src = block.get(key)
+    if src is None:
+        src = block.get(f"{key}_rows")
+    if isinstance(src, dict):
+        for k in ("rows", f"{key}_rows", "ket_qua_thu_nghiem"):
+            if isinstance(src.get(k), list):
+                src = src[k]
+                break
+        else:
+            if key == "rows":
+                src = None
+    if isinstance(src, list) and all(isinstance(x, dict) for x in src):
+        return src
+    return None
+
+
 def fill_insulation(doc, block: dict, cfg, log) -> list[str]:
     t = _find_table(doc, "insulation")
     if t is None:
         return ["Không tìm thấy bảng 'Điện trở cách điện' (mục 2)"]
     data = block.get("r_cach_dien_Mohm") or {}
+    rows_data = _rows_of(block, "r_cach_dien_Mohm")
+    if rows_data:
+        spec = table_spec("44", "r_cach_dien_Mohm") or {"columns": []}
+        for ri, row in enumerate(rows_data[:3], start=1):
+            if ri >= len(t.rows):
+                break
+            cells = t.rows[ri].cells
+            for ci, col in enumerate(spec["columns"], start=1):
+                if ci < len(cells):
+                    _put_force(cells[ci]._tc, _cell_value(col, row.get(col["key"])))
+            log("    ✓ R cách điện {:<18}= {} | {} | {}".format(
+                row.get("key") or f"dòng {ri}",
+                _cell_value(spec["columns"][0], row.get(spec["columns"][0]["key"])),
+                _cell_value(spec["columns"][1], row.get(spec["columns"][1]["key"])),
+                _cell_value(spec["columns"][2], row.get(spec["columns"][2]["key"])),
+            ))
+        return []
     names = {"cao_vo_ha1": "(Cao+Vỏ) - Hạ 1", "cao_vo_ha2": "(Cao+Vỏ) - Hạ 2",
              "ha1_ha2": "Hạ 1 - Hạ 2"}
     keys = list(names)
@@ -298,7 +381,48 @@ def _fill_row_table(doc, key, rows_data: list[list[str]], log, name: str):
     return []
 
 
+def _resize_table(table, total_needed: int) -> None:
+    """Cắt / nhân bản dòng cuối để bảng có đúng số dòng cần dùng."""
+    while len(table.rows) > total_needed:
+        tr = table.rows[-1]._tr
+        tr.getparent().remove(tr)
+    while len(table.rows) < total_needed:
+        tr = copy.deepcopy(table.rows[-1]._tr)
+        table.rows[-1]._tr.addnext(tr)
+
+
+def fill_row_table(doc, form: str, key: str, block: dict, rows_data: list[dict],
+                   name: str, log, data_key: str | None = None) -> list[str]:
+    """Điền bảng từ dữ liệu ``{"rows": [...]}`` – tự thêm/bớt dòng theo dữ liệu.
+
+    ``key`` là khoá nhận diện bảng trong file Word (``la``, ``mccb``…);
+    ``data_key`` là khoá trong JSON (mặc định ``rows``).
+    """
+    t = _find_table(doc, key)
+    if t is None:
+        return [f"Không tìm thấy bảng '{name}'"]
+    spec = table_spec(form, data_key or "rows") or {"columns": []}
+    header_rows = TABLE_HEADER_ROWS[key]
+    _resize_table(t, header_rows + len(rows_data))
+    stt_col = bool(spec.get("stt"))
+    for i, row in enumerate(rows_data):
+        cells = t.rows[header_rows + i].cells
+        start = 0
+        if stt_col and len(cells) > 1:
+            _put(cells[0]._tc, digits_only(row.get("stt")) or str(i + 1), bold=True)
+            start = 1
+        for ci, col in enumerate(spec.get("columns", [])):
+            if start + ci < len(cells):
+                _put_force(cells[start + ci]._tc, _cell_value(col, row.get(col["key"])))
+    log(f"    ✓ {name:<33}= {len(rows_data)} dòng số liệu")
+    return []
+
+
 def fill_mccb(doc, block: dict, cfg, log) -> list[str]:
+    rows_data = _rows_of(block, "rows")
+    if rows_data:
+        return fill_row_table(doc, "45", "mccb", block, rows_data,
+                              "Bảng kết quả thử nghiệm", log)
     rows = block.get("ket_qua_thu_nghiem")
     if not rows:
         r = block.get("r_cach_dien_Mohm") or {}
@@ -317,18 +441,9 @@ def fill_mccb(doc, block: dict, cfg, log) -> list[str]:
     table = _find_table(doc, "mccb")
     if table is None:
         return ["Không tìm thấy bảng kết quả thử nghiệm MCCB"]
-    header_rows = TABLE_HEADER_ROWS["mccb"]
-    # xoá dòng trống dư của mẫu (mẫu có sẵn 5 dòng STT)
-    total_needed = header_rows + len(rows)
-    while len(table.rows) > total_needed:
-        tr = table.rows[-1]._tr
-        tr.getparent().remove(tr)
-    while len(table.rows) < total_needed:
-        tr = copy.deepcopy(table.rows[-1]._tr)
-        table.rows[-1]._tr.addnext(tr)
+    _resize_table(table, TABLE_HEADER_ROWS["mccb"] + len(rows))
     for i, vals in enumerate(rows):
-        ri = header_rows + i
-        cells = table.rows[ri].cells
+        cells = table.rows[TABLE_HEADER_ROWS["mccb"] + i].cells
         _put(cells[0]._tc, str(i + 1), bold=True)
         for ci, v in enumerate(vals, start=1):
             if ci < len(cells):
@@ -338,6 +453,10 @@ def fill_mccb(doc, block: dict, cfg, log) -> list[str]:
 
 
 def fill_la(doc, block: dict, cfg, log) -> list[str]:
+    rows_data = _rows_of(block, "rows")
+    if rows_data:
+        return fill_row_table(doc, "46", "la", block, rows_data,
+                              "Bảng kết quả kiểm định LA", log)
     rows = block.get("ket_qua_thu_nghiem")
     if not rows:
         rows = [[
@@ -349,6 +468,10 @@ def fill_la(doc, block: dict, cfg, log) -> list[str]:
 
 
 def fill_fco(doc, block: dict, cfg, log) -> list[str]:
+    rows_data = _rows_of(block, "rows")
+    if rows_data:
+        return fill_row_table(doc, "47", "fco", block, rows_data,
+                              "Bảng kết quả kiểm định FCO", log)
     rows = block.get("ket_qua_thu_nghiem")
     if not rows:
         r = block.get("r_cach_dien_Mohm") or {}
@@ -368,6 +491,18 @@ def fill_earth(doc, block: dict, cfg, log) -> list[str]:
     t = _find_table(doc, "earth")
     if t is None:
         return ["Không tìm thấy bảng kết quả đo điện trở nối đất"]
+    rows_data = _rows_of(block, "rows")
+    if rows_data:
+        spec = table_spec("48", "rows") or {"columns": []}
+        _resize_table(t, 1 + len(rows_data))
+        for i, row in enumerate(rows_data):
+            cells = t.rows[1 + i].cells
+            _put(cells[0]._tc, digits_only(row.get("stt")) or str(i + 1), bold=True)
+            for ci, col in enumerate(spec["columns"]):
+                if 1 + ci < len(cells):
+                    _put_force(cells[1 + ci]._tc, _cell_value(col, row.get(col["key"])))
+        log(f"    ✓ Điện trở nối đất              = {len(rows_data)} dòng")
+        return []
     cells = t.rows[1].cells
     _put(cells[0]._tc, "1", bold=True)
     _put(cells[1]._tc, norm_text(block.get("chi_danh")))
