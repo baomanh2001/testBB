@@ -7,6 +7,11 @@
   "use strict";
 
   const TYPE_LABELS = {
+    tu_bu: "Tủ tụ bù",
+    cap_ngam: "Cáp ngầm",
+    lbfco: "LBFCO",
+    acb: "ACB",
+    mba_3p: "MBA 3P",
     mba_1p: "MBA 1P",
     mccb: "MCCB",
     la: "LA",
@@ -15,6 +20,11 @@
   };
 
   const TYPE_FULL_NAMES = {
+    tu_bu: "TỦ TỤ BÙ HẠ THẾ",
+    cap_ngam: "THÔNG TUYẾN CÁP NGẦM TRUNG THẾ",
+    lbfco: "CẦU CHÌ TỰ RƠI CÓ DẬP HỒ QUANG",
+    acb: "MÁY CẮT HẠ THẾ (ACB)",
+    mba_3p: "MÁY BIẾN ÁP 3 PHA",
     mba_1p: "MÁY BIẾN ÁP 1 PHA",
     mccb: "MÁY CẮT HẠ THẾ (MCCB)",
     la: "CHỐNG SÉT VAN (LA)",
@@ -22,13 +32,12 @@
     dtnd: "ĐIỆN TRỞ NỐI ĐẤT",
   };
 
-  const TYPE_SORT_ORDER = { mba_1p: 1, mccb: 2, la: 3, fco: 4, dtnd: 5 };
+  const TYPE_SORT_ORDER = { mba_3p: 1, mba_1p: 1, acb: 2, mccb: 2, la: 3, lbfco: 4, fco: 4, dtnd: 5, cap_ngam: 6, tu_bu: 7 };
 
   const MODEL_OPTIONS = {
     gemini: [
-      { value: "gemini-2.5-flash", label: "gemini-2.5-flash (Nhanh & Chuẩn - Khuyên dùng)" },
-      { value: "gemini-2.5-pro", label: "gemini-2.5-pro (Độ chính xác tối đa)" },
-      { value: "gemini-2.0-flash", label: "gemini-2.0-flash (Tốc độ cao)" },
+      ...["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview", "gemini-flash-latest", "gemini-pro-latest"].map(value => ({value, label: value})),
+      {value: "__custom__", label: "Model tùy chỉnh…"},
     ],
     openai: [
       { value: "gpt-4o", label: "gpt-4o (Đọc chữ viết tay rất tốt)" },
@@ -69,7 +78,7 @@
       const saved = JSON.parse(localStorage.getItem("toancau_ai_config") || "{}");
       return {
         provider: saved.provider || "gemini",
-        model: saved.model || "gemini-2.5-flash",
+        model: (saved.provider || "gemini") === "gemini" ? window.VisionAI.normalizeGeminiModel(saved.model) : (saved.model || "gpt-4o"),
         apiKey: saved.apiKey || "",
         baseUrl: saved.baseUrl || "https://api.openai.com/v1",
         extraHint: saved.extraHint || "",
@@ -77,7 +86,7 @@
     } catch (_) {
       return {
         provider: "gemini",
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         apiKey: "",
         baseUrl: "https://api.openai.com/v1",
         extraHint: "",
@@ -114,7 +123,9 @@
     return state.reports.find((r) => r.id === state.activeReportId) || null;
   }
 
+  const NEW_TYPE_DEFAULTS = {"mba_3p": {"so_tem": "", "hieu_may": "", "so_may": "", "nuoc_san_xuat": "", "nam_san_xuat": "", "cong_suat_dinh_muc": "", "so_pha": "", "tan_so": "", "dien_ap_dinh_muc": "", "to_dau_day": "", "kiem_tra_ben_ngoai": "", "nhiet_do": "", "cach_dien_rows": [{"doi_tuong_do": "", "r60": "", "r15": "", "kht": ""}, {"doi_tuong_do": "", "r60": "", "r15": "", "kht": ""}, {"doi_tuong_do": "", "r60": "", "r15": "", "kht": ""}], "dc_cao_ap_rows": [{"nac": "", "ab": "", "bc": "", "ca": ""}, {"nac": "", "ab": "", "bc": "", "ca": ""}, {"nac": "", "ab": "", "bc": "", "ca": ""}, {"nac": "", "ab": "", "bc": "", "ca": ""}, {"nac": "", "ab": "", "bc": "", "ca": ""}], "dc_ha_an": "", "dc_ha_bn": "", "dc_ha_cn": "", "ti_so_rows": [{"nac": "", "k1": "", "k2": "", "k3": ""}, {"nac": "", "k1": "", "k2": "", "k3": ""}, {"nac": "", "k1": "", "k2": "", "k3": ""}, {"nac": "", "k1": "", "k2": "", "k3": ""}, {"nac": "", "k1": "", "k2": "", "k3": ""}], "khong_tai_u0": "", "khong_tai_i0": "", "khong_tai_i0_pct": "", "khong_tai_p0": "", "ngan_mach_un": "", "ngan_mach_un_pct": "", "ngan_mach_in": "", "ngan_mach_pn75": "", "dien_ap_tang_cao_rows": [{"doi_tuong_thu": "", "u_thu": "", "thoi_gian": ""}, {"doi_tuong_thu": "", "u_thu": "", "thoi_gian": ""}], "thiet_bi_kiem_dinh": "", "ket_luan": ""}, "acb": {"hieu": "", "so_cuc": "", "loai": "", "kieu": "", "dien_ap_dinh_muc": "", "dong_dien_dinh_muc": "", "dong_ngan_mach": "", "tan_so": "", "dien_ap_cach_dien": "", "dien_ap_xung": "", "kiem_tra_ben_ngoai": "", "so_luong": "", "rows": [{"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": "", "so_tem": ""}], "thiet_bi_kiem_dinh": "", "tieu_chuan_kiem_dinh": "", "ket_luan": ""}, "lbfco": {"vat_lieu_cach_dien": "", "dong_dien_dinh_muc": "", "dien_ap_dinh_muc": "", "kha_nang_cat_ngan_mach": "", "kiem_tra_ben_ngoai": "", "so_luong": "", "rows": [{"thiet_bi": "", "rcd_truoc": "", "rcd_sau": "", "ac_kho": "", "ac_uot": "", "dong_cat": "", "ket_qua": ""}, {"thiet_bi": "", "rcd_truoc": "", "rcd_sau": "", "ac_kho": "", "ac_uot": "", "dong_cat": "", "ket_qua": ""}, {"thiet_bi": "", "rcd_truoc": "", "rcd_sau": "", "ac_kho": "", "ac_uot": "", "dong_cat": "", "ket_qua": ""}], "tieu_chuan_kiem_dinh": "", "thiet_bi_kiem_dinh": "", "ket_luan": ""}, "cap_ngam": {"so_tem": "", "doan_cap_tu": "", "doan_cap_den": "", "loai_cap": "", "tiet_dien": "", "dien_ap_dinh_muc": "", "tan_so": "", "kiem_tra_ben_ngoai": "", "nhiet_do": "", "cach_dien_rows": [{"doi_tuong_do": "", "tieu_chuan": "", "so_lieu_do": ""}, {"doi_tuong_do": "", "tieu_chuan": "", "so_lieu_do": ""}, {"doi_tuong_do": "", "tieu_chuan": "", "so_lieu_do": ""}], "dc_tang_cao_rows": [{"doi_tuong_do": "", "thoi_gian": "", "dien_ap_thu": "", "dong_ro": ""}, {"doi_tuong_do": "", "thoi_gian": "", "dien_ap_thu": "", "dong_ro": ""}, {"doi_tuong_do": "", "thoi_gian": "", "dien_ap_thu": "", "dong_ro": ""}], "thiet_bi_kiem_dinh": "", "ket_luan": ""}, "tu_bu": {"kiem_tra_ben_ngoai": "", "mccb_tong_thong_so": "", "mccb_tong_so_luong": "", "mccb_tong_rows": [{"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}], "mccb_nhanh_thong_so": "", "mccb_nhanh_so_luong": "", "mccb_nhanh_rows": [{"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}], "contactor_thong_so": "", "contactor_so_luong": "", "contactor_rows": [{"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}, {"stt": "", "rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "", "rtx_c": "", "utest": "", "dong_cat": "", "ket_qua": ""}], "tu_bu_so_luong": "", "tu_bu_rows": [{"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}, {"stt": "", "dung_luong": "", "r_cach_dien": "", "dien_dung": "", "ket_qua": ""}], "thiet_bi_kiem_dinh": "", "tieu_chuan_kiem_dinh": "", "ket_luan": ""}};
   function defaultDataForType(type) {
+    if (NEW_TYPE_DEFAULTS[type]) return structuredClone(NEW_TYPE_DEFAULTS[type]);
     if (type === "mba_1p") {
       return {
         so_tem: "",
@@ -252,15 +263,16 @@
       const dm = String(data?.dong_dien_dinh_muc || "250A").replace(/\s+/g, "").toUpperCase();
       return `${prefix} MCCB ${dm}.docx`;
     }
+    if (["mba_3p", "acb", "lbfco", "cap_ngam", "tu_bu"].includes(type)) return `${prefix} BB ${TYPE_LABELS[type]}.docx`;
     if (type === "la") return `${prefix} BB LA.docx`;
     if (type === "fco") return `${prefix} BB FCO.docx`;
     return `${prefix} BB điện trở nối đất.docx`;
   }
 
   function buildSoBienBan(stt, monthYear) {
-    const sttStr = String(stt).padStart(2, "0");
+    const sttStr = String(stt).padStart(3, "0");
     const my = (monthYear || "1126").trim();
-    return `50${sttStr}${my}/BB-TC`;
+    return `5${sttStr}${my}/BB-TC`;
   }
 
   function extractMonthYearFromDate(ddmmyyyy) {
@@ -276,7 +288,7 @@
   // =========================================================
   async function loadSampleBatch() {
     try {
-      const resp = await fetch("/api/samples");
+      const resp = await fetch(`/api/samples?station=${encodeURIComponent(document.getElementById("selectSampleStation").value)}`);
       if (!resp.ok) throw new Error("Không thể tải bộ dữ liệu mẫu.");
       const payload = await resp.json();
       const cp = payload.common_project || {};
@@ -312,7 +324,7 @@
       state.activeImageIndex = 0;
       resetViewerTransform();
       renderAll();
-      showToast("Đã nạp bộ 7 ảnh hiện trường & 5 biên bản mẫu E-GREEN!", "success");
+      showToast(`Đã nạp ${state.reports.length} biên bản mẫu!`, "success");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -1086,6 +1098,16 @@
       `;
     }
 
+    if (NEW_TYPE_DEFAULTS[rep.report_type]) {
+      const label = k => esc(k.replace(/_/g, " "));
+      specificHtml = Object.entries(d).map(([key, value]) => {
+        if (!Array.isArray(value)) return `<div class="field"><label>${label(key)}</label><input data-d="${esc(key)}" value="${esc(value)}"></div>`;
+        const template = (NEW_TYPE_DEFAULTS[rep.report_type][key] || [])[0] || {};
+        const cols = Object.keys(value[0] || template);
+        return `<div class="card"><h4>${label(key)}</h4><div style="overflow:auto"><table><thead><tr>${cols.map(k => `<th>${label(k)}</th>`).join("")}<th></th></tr></thead><tbody>${value.map((row,i) => `<tr>${cols.map(k => `<td><input data-arr="${esc(key)}" data-idx="${i}" data-k="${esc(k)}" value="${esc(row[k])}"></td>`).join("")}<td><button type="button" data-generic-delete="${esc(key)}" data-idx="${i}">Xóa</button></td></tr>`).join("")}</tbody></table></div><button type="button" data-generic-add="${esc(key)}">+ Thêm dòng</button></div>`;
+      }).join("");
+    }
+
     container.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -1145,6 +1167,16 @@
   }
 
   function bindEditorListeners(rep, container) {
+    container.querySelectorAll("[data-generic-add]").forEach(btn => btn.addEventListener("click", () => {
+      const key = btn.dataset.genericAdd;
+      const example = rep.data[key][0] || NEW_TYPE_DEFAULTS[rep.report_type][key][0] || {};
+      rep.data[key].push(Object.fromEntries(Object.keys(example).map(k => [k, ""])));
+      renderFormEditor(rep, container);
+    }));
+    container.querySelectorAll("[data-generic-delete]").forEach(btn => btn.addEventListener("click", () => {
+      rep.data[btn.dataset.genericDelete].splice(Number(btn.dataset.idx), 1);
+      renderFormEditor(rep, container);
+    }));
     // Switch report type
     const typeSel = container.querySelector("#selectReportType");
     if (typeSel) {
@@ -1377,6 +1409,16 @@
     const d = rep.data;
     const sig = rep.signatory;
 
+    if (NEW_TYPE_DEFAULTS[rep.report_type]) {
+      const content = Object.entries(d).map(([key, value]) => {
+        const label = esc(key.replace(/_/g, " "));
+        if (!Array.isArray(value)) return `<div class="a4-line">${label}: ${esc(value)}</div>`;
+        const cols = Object.keys(value[0] || {});
+        return `<div class="a4-sec-heading">${label}</div><table class="a4-table"><tr>${cols.map(k => `<th>${esc(k.replace(/_/g, " "))}</th>`).join("")}</tr>${value.map(row => `<tr>${cols.map(k => `<td>${esc(row[k])}</td>`).join("")}</tr>`).join("")}</table>`;
+      }).join("");
+      container.innerHTML = `<div class="a4-page"><img src="/static/assets/watermark.jpeg" class="a4-watermark" alt=""><div class="a4-content">${renderHeaderTableHtml(c)}<div class="a4-equip-title">${esc(TYPE_FULL_NAMES[rep.report_type])}</div>${Object.entries(c).map(([k,v]) => `<div class="a4-line">${esc(k.replace(/_/g, " "))}: ${esc(v)}</div>`).join("")}${content}${renderSigHtml(sig)}</div>${renderFooterHtml()}</div>`;
+      return;
+    }
     if (rep.report_type === "mba_1p") {
       const nTaps = (d.dien_tro_cao_ap || []).length || 5;
       container.innerHTML = `
@@ -1756,6 +1798,12 @@
       if (list.some((m) => m.value === state.aiConfig.model)) {
         modSel.value = state.aiConfig.model;
       }
+      if (!list.some(m => m.value === state.aiConfig.model) && p === "gemini") {
+        modSel.value = "__custom__";
+        document.getElementById("cfgCustomModel").value = state.aiConfig.model;
+      }
+      document.getElementById("cfgCustomModelWrap").classList.toggle("hidden", modSel.value !== "__custom__");
+      document.getElementById("btnFetchLiveModels").classList.toggle("hidden", p !== "gemini");
       if (p === "openai") {
         baseWrap.classList.remove("hidden");
         helpTxt.innerHTML = `Sử dụng OpenAI API Key (<code>sk-...</code>). Key chỉ lưu trên trình duyệt của bạn.`;
@@ -1764,6 +1812,7 @@
         helpTxt.innerHTML = `Lấy mã Gemini miễn phí tại <strong>aistudio.google.com/apikey</strong>. API Key chỉ lưu cục bộ trên trình duyệt của bạn.`;
       }
     };
+    modSel.onchange = () => document.getElementById("cfgCustomModelWrap").classList.toggle("hidden", modSel.value !== "__custom__");
     provSel.onchange = renderModelList;
     renderModelList();
     keyInp.value = state.aiConfig.apiKey || "";
@@ -2030,9 +2079,18 @@
       populateAiModal();
       openModal("modalAiConfig");
     });
+    document.getElementById("btnFetchLiveModels").addEventListener("click", async () => {
+      try {
+        const models = await window.VisionAI.fetchAvailableGeminiModels(document.getElementById("cfgApiKey").value);
+        const sel = document.getElementById("cfgModel");
+        for (const m of models) if (![...sel.options].some(o => o.value === m.value)) sel.add(new Option(m.label, m.value));
+        showToast(`Đã tải ${models.length} model.`, "success");
+      } catch (err) { showToast(err.message, "error"); }
+    });
     document.getElementById("btnSaveAiConfig").addEventListener("click", () => {
       state.aiConfig.provider = document.getElementById("cfgProvider").value;
-      state.aiConfig.model = document.getElementById("cfgModel").value;
+      state.aiConfig.model = document.getElementById("cfgModel").value === "__custom__" ? document.getElementById("cfgCustomModel").value.trim() : document.getElementById("cfgModel").value;
+      if (!state.aiConfig.model) { showToast("Vui lòng nhập Model ID.", "error"); return; }
       state.aiConfig.apiKey = document.getElementById("cfgApiKey").value.trim();
       state.aiConfig.baseUrl = document.getElementById("cfgBaseUrl").value.trim() || "https://api.openai.com/v1";
       state.aiConfig.extraHint = document.getElementById("cfgExtraHint").value.trim();

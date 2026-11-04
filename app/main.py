@@ -2,7 +2,7 @@ import io
 import os
 import urllib.parse
 import zipfile
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -16,10 +16,9 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 app = FastAPI(
     title="Toàn Cầu - Hệ thống Đọc Ảnh Biên Bản & Xuất Word Tự Động",
-    version="1.0.0",
+    version="2.0.0",
 )
 
-# Allow all hosts and origins so Arena Live Preview (*.e2b.app) and local LAN work seamlessly
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,19 +46,25 @@ def serve_index() -> FileResponse:
 def health_check() -> dict:
     return {
         "status": "ok",
+        "default_gemini_model": "gemini-3.8-flash",
         "supported_templates": [
             {"id": "mba_1p", "name": "Máy biến áp 1 pha (MBA 1P)"},
+            {"id": "mba_3p", "name": "Máy biến áp 3 pha (MBA 3P)"},
             {"id": "mccb", "name": "Máy cắt hạ thế (MCCB)"},
+            {"id": "acb", "name": "Máy cắt hạ thế (ACB)"},
             {"id": "la", "name": "Chống sét van (LA)"},
             {"id": "fco", "name": "Cầu chì tự rơi (FCO)"},
+            {"id": "lbfco", "name": "Cầu chì tự rơi có dập hồ quang (LBFCO)"},
             {"id": "dtnd", "name": "Điện trở nối đất (ĐTNĐ)"},
+            {"id": "cap_ngam", "name": "Thông tuyến cáp ngầm trung thế"},
+            {"id": "tu_bu", "name": "Tủ tụ bù hạ thế"},
         ],
     }
 
 
 @app.get("/api/samples")
-def api_samples() -> dict:
-    return get_sample_batch()
+def api_samples(station: str = Query(default="dream_mekong")) -> dict:
+    return get_sample_batch(station=station)
 
 
 @app.get("/api/sample-images/{filename}")
@@ -82,10 +87,7 @@ def export_single_docx(req: ReportDocumentRequest) -> Response:
 
     fname = (req.filename or "bien_ban.docx").strip()
     if not fname.lower().endswith(".docx"):
-        if fname.lower().endswith(".doc"):
-            fname = fname[:-4] + ".docx"
-        else:
-            fname = fname + ".docx"
+        fname = (fname[:-4] if fname.lower().endswith(".doc") else fname) + ".docx"
 
     return Response(
         content=docx_bytes,

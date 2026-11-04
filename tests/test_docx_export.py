@@ -2,6 +2,7 @@ import base64
 import io
 import zipfile
 import docx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -14,19 +15,20 @@ def test_health_and_static_index():
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
-    assert len(data["supported_templates"]) == 5
+    assert len(data["supported_templates"]) == 10
 
     idx = client.get("/")
     assert idx.status_code == 200
     assert "CÔNG TY CP THÍ NGHIỆM ĐIỆN TOÀN CẦU" in idx.text
 
 
-def test_samples_and_all_5_docx_exports():
-    resp = client.get("/api/samples")
+@pytest.mark.parametrize("station,count", [("dream_mekong", 7), ("egreen", 5)])
+def test_samples_and_docx_exports(station, count):
+    resp = client.get("/api/samples", params={"station": station})
     assert resp.status_code == 200
     batch = resp.json()
     reports = batch["reports"]
-    assert len(reports) == 5
+    assert len(reports) == count
 
     # Verify sample image serving works
     first_img_url = reports[0]["images"][0]["url"]
@@ -62,7 +64,7 @@ def test_samples_and_all_5_docx_exports():
         )
         combined = full_text + "\n" + tbl_text
         assert rep["common"]["so_bien_ban"] in combined
-        assert "DOANH NGHIỆP TƯ NHÂN E-GREEN" in combined
+        assert rep["common"]["ten_cong_trinh"] in combined
         assert "Nguyễn Trung Nghĩa" in combined
         assert "Nguyễn Minh Quân" in combined
         assert "Nguyễn Nhật Tân" in combined

@@ -1,7 +1,18 @@
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
-ReportType = Literal["mba_1p", "mccb", "la", "fco", "dtnd"]
+ReportType = Literal[
+    "mba_1p",
+    "mba_3p",
+    "mccb",
+    "acb",
+    "la",
+    "fco",
+    "lbfco",
+    "dtnd",
+    "cap_ngam",
+    "tu_bu",
+]
 
 
 class SignatoryInfo(BaseModel):
@@ -36,7 +47,7 @@ class CommonHeader(BaseModel):
 
 # --- 1. Máy biến áp 1 pha (MBA 1P) ---
 class MbaInsulationRow(BaseModel):
-    doi_tuong_do: str = "(Cao+Vỏ) – Hạ 1"
+    doi_tuong_do: str = "(Cao+Vỏ) –Hạ 1"
     r60: str = "2760"
     r15: str = "2106"
     kht: str = "1,31"
@@ -90,7 +101,81 @@ class Mba1PData(BaseModel):
     ket_luan: str = "Máy biến áp 1 pha trên đạt yêu cầu đóng điện vận hành."
 
 
-# --- 2. Máy cắt hạ thế (MCCB) ---
+# --- 2. Máy biến áp 3 pha (MBA 3P) ---
+class Mba3PDcTapRow(BaseModel):
+    nac: str = "1"
+    ab: str = "3,413"
+    bc: str = "3,418"
+    ca: str = "3,421"
+
+
+class Mba3PRatioRow(BaseModel):
+    nac: str = "1"
+    k1: str = "57,759"
+    k2: str = "57,763"
+    k3: str = "57,764"
+
+
+class Mba3PData(BaseModel):
+    so_tem: str = "016140"
+    hieu_may: str = "THIBIDI"
+    so_may: str = "103150017"
+    nuoc_san_xuat: str = "Việt Nam"
+    nam_san_xuat: str = "2010"
+    cong_suat_dinh_muc: str = "1500kVA"
+    so_pha: str = "03"
+    tan_so: str = "50 Hz"
+    dien_ap_dinh_muc: str = "22/0.4kV"
+    to_dau_day: str = "Dyn11"
+    kiem_tra_ben_ngoai: str = "Bình thường"
+    nhiet_do: str = "34⁰C"
+    cach_dien_rows: List[MbaInsulationRow] = Field(
+        default_factory=lambda: [
+            MbaInsulationRow(doi_tuong_do="Cao – Vỏ", r60="15300", r15="11300", kht="1,35"),
+            MbaInsulationRow(doi_tuong_do="Cao – Hạ", r60="13700", r15="10200", kht="1,34"),
+            MbaInsulationRow(doi_tuong_do="Hạ – Vỏ", r60="8200", r15="6200", kht="1,32"),
+        ]
+    )
+    dc_cao_ap_rows: List[Mba3PDcTapRow] = Field(
+        default_factory=lambda: [
+            Mba3PDcTapRow(nac="1", ab="3,413", bc="3,418", ca="3,421"),
+            Mba3PDcTapRow(nac="2", ab="3,332", bc="3,336", ca="3,339"),
+            Mba3PDcTapRow(nac="3", ab="3,251", bc="3,255", ca="3,258"),
+            Mba3PDcTapRow(nac="4", ab="3,169", bc="3,174", ca="3,177"),
+            Mba3PDcTapRow(nac="5", ab="3,088", bc="3,092", ca="3,095"),
+        ]
+    )
+    dc_ha_an: str = "an: 0,885"
+    dc_ha_bn: str = "bn: 0,887"
+    dc_ha_cn: str = "cn: 0,889"
+    ti_so_rows: List[Mba3PRatioRow] = Field(
+        default_factory=lambda: [
+            Mba3PRatioRow(nac="1", k1="57,759", k2="57,763", k3="57,764"),
+            Mba3PRatioRow(nac="2", k1="56,384", k2="56,387", k3="56,388"),
+            Mba3PRatioRow(nac="3", k1="55,019", k2="55,012", k3="55,013"),
+            Mba3PRatioRow(nac="4", k1="53,633", k2="53,637", k3="53,638"),
+            Mba3PRatioRow(nac="5", k1="52,258", k2="52,261", k3="52,262"),
+        ]
+    )
+    khong_tai_u0: str = "400"
+    khong_tai_i0: str = "5,19"
+    khong_tai_i0_pct: str = "0,24"
+    khong_tai_p0: str = "1210,3"
+    ngan_mach_un: str = "1280,4"
+    ngan_mach_un_pct: str = "5,82"
+    ngan_mach_in: str = "39,36"
+    ngan_mach_pn75: str = "12423,3"
+    dien_ap_tang_cao_rows: List[MbaAcWithstandRow] = Field(
+        default_factory=lambda: [
+            MbaAcWithstandRow(doi_tuong_thu="Cao – (Hạ + vỏ)", u_thu="50", thoi_gian="1 phút"),
+            MbaAcWithstandRow(doi_tuong_thu="Hạ – (Cao + vỏ)", u_thu="3", thoi_gian="1 phút"),
+        ]
+    )
+    thiet_bi_kiem_dinh: str = "Kyoritsu 3125A, C.A 6255, DTR 8510, HVTS-70/50, Multimeter, Variac."
+    ket_luan: str = "Máy biến áp 3 pha trên đạt yêu cầu đóng điện vận hành"
+
+
+# --- 3. Máy cắt hạ thế (MCCB & ACB) ---
 class MccbRow(BaseModel):
     stt: str = "1"
     rcd_close: str = ">5000"
@@ -123,7 +208,7 @@ class MccbData(BaseModel):
     ket_luan: str = "01 máy cắt hạ thế (MCCB) trên đạt yêu cầu đóng điện vận hành."
 
 
-# --- 3. Chống sét van (LA) ---
+# --- 4. Chống sét van (LA) ---
 class LaRow(BaseModel):
     doi_tuong_do: str = "LA 01"
     dien_tro_cach_dien: str = ">10000"
@@ -145,7 +230,7 @@ class LaData(BaseModel):
     ket_luan: str = "Một (01) chống sét van trên đạt yêu cầu đóng điện vận hành"
 
 
-# --- 4. Cầu chì tự rơi (FCO) ---
+# --- 5. Cầu chì tự rơi (FCO & LBFCO) ---
 class FcoRow(BaseModel):
     thiet_bi: str = "FCO 01"
     rcd_truoc: str = ">10000"
@@ -169,7 +254,7 @@ class FcoData(BaseModel):
     ket_luan: str = "Một (01) FCO trên đạt yêu cầu đóng điện vận hành"
 
 
-# --- 5. Điện trở nối đất (ĐTNĐ) ---
+# --- 6. Điện trở nối đất (ĐTNĐ) ---
 class DtndRow(BaseModel):
     stt: str = "1"
     chi_danh: str = "Điện trở nối đất trạm biến áp"
@@ -183,6 +268,87 @@ class DtndData(BaseModel):
     thiet_bi_thu_nghiem: str = "KEW 4105DL"
     ghi_chu_1: str = "Chỉ danh, vị trí cọc nối đất do đơn vị yêu cầu thử nghiệm cung cấp"
     ghi_chu_2: str = "Các kết quả đo chỉ có giá trị đối với điểm đo"
+
+
+# --- 7. Thông tuyến cáp ngầm trung thế ---
+class CapInsulationRow(BaseModel):
+    doi_tuong_do: str = "Pha 1 – (2+3+vỏ)"
+    tieu_chuan: str = ">5000"
+    so_lieu_do: str = ">10000"
+
+
+class CapDcHipotsRow(BaseModel):
+    doi_tuong_do: str = "Pha 1 – (2+3+vỏ)"
+    thoi_gian: str = "15"
+    dien_ap_thu: str = "38,1"
+    dong_ro: str = "17"
+
+
+class CapNgamData(BaseModel):
+    so_tem: str = "016139"
+    doan_cap_tu: str = "Trụ 82/1"
+    doan_cap_den: str = "Trạm biến áp 1500kVA"
+    loai_cap: str = "Cáp ngầm trung thế"
+    tiet_dien: str = "3 x 50mm2"
+    dien_ap_dinh_muc: str = "12,7/22(24)kV"
+    tan_so: str = "50Hz"
+    kiem_tra_ben_ngoai: str = "Bình thường"
+    nhiet_do: str = "34⁰C"
+    cach_dien_rows: List[CapInsulationRow] = Field(
+        default_factory=lambda: [
+            CapInsulationRow(doi_tuong_do="Pha 1 – (2+3+vỏ)", tieu_chuan=">5000", so_lieu_do=">10000"),
+            CapInsulationRow(doi_tuong_do="Pha 2 – (1+3+vỏ)", tieu_chuan=">5000", so_lieu_do=">10000"),
+            CapInsulationRow(doi_tuong_do="Pha 3 – (1+2+vỏ)", tieu_chuan=">5000", so_lieu_do=">10000"),
+        ]
+    )
+    dc_tang_cao_rows: List[CapDcHipotsRow] = Field(
+        default_factory=lambda: [
+            CapDcHipotsRow(doi_tuong_do="Pha 1 – (2+3+vỏ)", thoi_gian="15", dien_ap_thu="38,1", dong_ro="17"),
+            CapDcHipotsRow(doi_tuong_do="Pha 2 – (1+3+vỏ)", thoi_gian="15", dien_ap_thu="38,1", dong_ro="12"),
+            CapDcHipotsRow(doi_tuong_do="Pha 3 – (1+2+vỏ)", thoi_gian="15", dien_ap_thu="38,1", dong_ro="15"),
+        ]
+    )
+    thiet_bi_kiem_dinh: str = "Kyoritsu 3125A, HTV-70/50"
+    ket_luan: str = "01 đoạn cáp 3 pha đạt yêu cầu đóng điện vận hành"
+
+
+# --- 8. Tủ tụ bù hạ thế ---
+class TuBuSwitchRow(BaseModel):
+    stt: str = "1"
+    rcd_close: str = ">5000"
+    rcd_open: str = ">5000"
+    rtx_a: str = "325"
+    rtx_b: str = "329"
+    rtx_c: str = "327"
+    utest: str = "3"
+    dong_cat: str = "5"
+    ket_qua: str = "Đạt"
+
+
+class TuBuCapRow(BaseModel):
+    stt: str = "1"
+    dung_luong: str = "10"
+    r_cach_dien: str = ">2000"
+    dien_dung: str = "164,3"
+    ket_qua: str = "Đạt"
+
+
+class TuBuData(BaseModel):
+    kiem_tra_ben_ngoai: str = "Bình thường"
+    mccb_tong_thong_so: str = "1200A, ABS 1203b, 415V, 65kA, 50Hz"
+    mccb_tong_so_luong: str = "01"
+    mccb_tong_rows: List[TuBuSwitchRow] = Field(default_factory=lambda: [TuBuSwitchRow()])
+    mccb_nhanh_thong_so: str = "200A, ABN 203c, 380V, 30kA, 50Hz"
+    mccb_nhanh_so_luong: str = "06"
+    mccb_nhanh_rows: List[TuBuSwitchRow] = Field(default_factory=lambda: [TuBuSwitchRow()])
+    contactor_thong_so: str = "LS, MC-150a"
+    contactor_so_luong: str = "06"
+    contactor_rows: List[TuBuSwitchRow] = Field(default_factory=lambda: [TuBuSwitchRow()])
+    tu_bu_so_luong: str = "30"
+    tu_bu_rows: List[TuBuCapRow] = Field(default_factory=lambda: [TuBuCapRow()])
+    thiet_bi_kiem_dinh: str = "Kyoritsu 3165; Kyoritsu 3125A; CA 6255; CA 6292; HVT-70/50; CA 6555; Megger DPM1000."
+    tieu_chuan_kiem_dinh: str = "QCVN QTĐ-5: 2009/BCT; QT/TNMCĐ"
+    ket_luan: str = "Tủ tụ bù trên đạt yêu cầu đóng điện vận hành"
 
 
 class ReportDocumentRequest(BaseModel):

@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 SAMPLE_IMAGES = {
+    # Batch 1: E-GREEN 50kVA 1P
     "meter": "1793774540596_4641126229309712981_4641126229309712981_48781e09ae3965051ec46cd630b7a734.jpg",
     "mba_p1": "1793774541459_4641126229309712981_4641126229309712981_07ee685b68694cb264f1aa62b4d5f9ac.jpg",
     "mba_p2": "1793774542546_4641126229309712981_4641126229309712981_f73eddb68b273394643ad357c1605145.jpg",
@@ -8,10 +9,19 @@ SAMPLE_IMAGES = {
     "dtnd": "1793774544075_4641126229309712981_4641126229309712981_9a483da05aba3c5a4307d31c53884cb8.jpg",
     "fco": "1793774544827_4641126229309712981_4641126229309712981_92be31a5ef12a129fa4073b70fa931de.jpg",
     "la": "1793774545590_4641126229309712981_4641126229309712981_4e0466ee364b8d15e965d760b6f47e2f.jpg",
+    # Batch 2: DREAM MEKONG 1500kVA 3P
+    "dm_lbfco": "1793774614533_4641126229309712981_4641126229309712981_8d5d55fd5e3590b50da6e198cd0c4d6c.jpg",
+    "dm_mba_p1": "1793774614664_4641126229309712981_4641126229309712981_124082495553b48cbb4b1f00a739f2f4.jpg",
+    "dm_mba_p2": "1793774614798_4641126229309712981_4641126229309712981_40402aead876e60b4c568e4eca346899.jpg",
+    "dm_dtnd": "1793774614927_4641126229309712981_4641126229309712981_cc39d622e8d9c30b2e362b9af78058e5.jpg",
+    "dm_acb": "1793774615061_4641126229309712981_4641126229309712981_371ad9a0e057bd8de6e084096fa8d81e.jpg",
+    "dm_la": "1793774615198_4641126229309712981_4641126229309712981_53c68aea2530c7fa355e353dc9244a2f.jpg",
+    "dm_cap_p1": "1793774615327_4641126229309712981_4641126229309712981_bec207c2df574a449f31f7ae24b56a30.jpg",
+    "dm_cap_p2": "1793774615450_4641126229309712981_4641126229309712981_7549968cb05f843d1b9adee16df35bb2.jpg",
 }
 
 
-def get_sample_batch() -> Dict[str, Any]:
+def get_egreen_batch() -> Dict[str, Any]:
     common_project = {
         "ten_cong_trinh": "Trạm biến áp 50kVA – DOANH NGHIỆP TƯ NHÂN E-GREEN",
         "dia_chi": "Khu phố Gia Huỳnh, Phường Trảng Bàng, Tỉnh Tây Ninh, Việt Nam",
@@ -31,15 +41,6 @@ def get_sample_batch() -> Dict[str, Any]:
         "include_signature": True,
     }
 
-    context_photos = [
-        {
-            "label": "Ảnh công tơ / Nhãn trạm (E-GREEN - Trụ 34/22/3/1)",
-            "url": f"/api/sample-images/{SAMPLE_IMAGES['meter']}",
-            "filename": SAMPLE_IMAGES["meter"],
-            "note": "Trích xuất pháp nhân chuẩn: DOANH NGHIỆP TƯ NHÂN E-GREEN (Trụ 34/22/3/1, TI: 250/5, CE-14)",
-        }
-    ]
-
     reports = [
         {
             "id": "sample-44",
@@ -53,9 +54,8 @@ def get_sample_batch() -> Dict[str, Any]:
             ],
             "ai_notes": [
                 "Đã tự động gộp Trang 1/2 và Trang 2/2 thành 1 biên bản Máy biến áp 1 pha hoàn chỉnh.",
-                "Chuẩn hóa 'VN' → 'Việt Nam', 'TBA 50kVA - DNTN E-Green' → 'Trạm biến áp 50kVA – DOANH NGHIỆP TƯ NHÂN E-GREEN'.",
+                "Chuẩn hóa từ ảnh công tơ CE-14: 'DOANH NGHIỆP TƯ NHÂN E-GREEN'.",
                 "Hiệu chỉnh tổ đấu dây ghi tay 'Dyn 11' sang đúng chuẩn máy 1 pha 'I/I0'.",
-                "Lưu ý kiểm tra: Ô Tỉ số biến áp Hạ 1 - Nấc 1 trên ảnh viết '57,95' (file .doc cũ ghi 57,98).",
             ],
             "common": {
                 "so_bien_ban": "50441126/BB-TC",
@@ -113,13 +113,8 @@ def get_sample_batch() -> Dict[str, Any]:
             "stt_file": 45,
             "report_type": "mccb",
             "filename": "45 MCCB 250A.docx",
-            "images": [
-                {"label": "Biên bản MCCB 250A", "url": f"/api/sample-images/{SAMPLE_IMAGES['mccb']}"},
-            ],
-            "ai_notes": [
-                "Chuẩn hóa Hiệu 'Mitsubishi' → 'MITSUBISHI'; các ô Uđm, Icu để trống → '-'.",
-                "Lưu ý kiểm tra: Ô Số tem trên ảnh viết tay nhìn giống '017245' (liền kề tem MBA 017246), bản mẫu cũ ghi '017215'.",
-            ],
+            "images": [{"label": "Biên bản MCCB 250A", "url": f"/api/sample-images/{SAMPLE_IMAGES['mccb']}"}],
+            "ai_notes": ["Chuẩn hóa Hiệu 'Mitsubishi' → 'MITSUBISHI'; các ô trống → '-'."],
             "common": {
                 "so_bien_ban": "50451126/BB-TC",
                 "ngay_phat_hanh": "04/11/2026",
@@ -170,13 +165,8 @@ def get_sample_batch() -> Dict[str, Any]:
             "stt_file": 46,
             "report_type": "la",
             "filename": "46 BB LA.docx",
-            "images": [
-                {"label": "Biên bản LA", "url": f"/api/sample-images/{SAMPLE_IMAGES['la']}"},
-            ],
-            "ai_notes": [
-                "Tự động đổi đơn vị MCOV ghi tay '15300V' → '15,3kV' theo chuẩn biểu mẫu.",
-                "Đã loại bỏ các dòng trống gạch chéo LA 02..06.",
-            ],
+            "images": [{"label": "Biên bản LA", "url": f"/api/sample-images/{SAMPLE_IMAGES['la']}"}],
+            "ai_notes": ["Tự động đổi đơn vị MCOV ghi tay '15300V' → '15,3kV'."],
             "common": {
                 "so_bien_ban": "50461126/BB-TC",
                 "ngay_phat_hanh": "04/11/2026",
@@ -198,14 +188,7 @@ def get_sample_batch() -> Dict[str, Any]:
                 "dong_dien_xa": "10 kA",
                 "kiem_tra_ben_ngoai": "Bình thường",
                 "so_luong": "01",
-                "rows": [
-                    {
-                        "doi_tuong_do": "LA 01",
-                        "dien_tro_cach_dien": ">10000",
-                        "dong_dien_ro": "17",
-                        "dien_ap_ac": "35",
-                    }
-                ],
+                "rows": [{"doi_tuong_do": "LA 01", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "17", "dien_ap_ac": "35"}],
                 "tieu_chuan_kiem_dinh": "QCVN QTĐ-5,6,7: 2009/BCT",
                 "thiet_bi_kiem_dinh": "Kyoritsu 3125A ; HVT-70/50",
                 "ket_luan": "Một (01) chống sét van trên đạt yêu cầu đóng điện vận hành",
@@ -216,13 +199,8 @@ def get_sample_batch() -> Dict[str, Any]:
             "stt_file": 47,
             "report_type": "fco",
             "filename": "47 BB FCO.docx",
-            "images": [
-                {"label": "Biên bản FCO", "url": f"/api/sample-images/{SAMPLE_IMAGES['fco']}"},
-            ],
-            "ai_notes": [
-                "Nhận diện chỗ gạch sửa tay Vật liệu cách điện 'Polymer' → lấy giá trị đã sửa là 'Sứ'.",
-                "Nhận diện Điện áp định mức sửa tay → '27kV'.",
-            ],
+            "images": [{"label": "Biên bản FCO", "url": f"/api/sample-images/{SAMPLE_IMAGES['fco']}"}],
+            "ai_notes": ["Nhận diện chỗ gạch sửa tay Vật liệu cách điện 'Polymer' → 'Sứ', Điện áp → '27kV'."],
             "common": {
                 "so_bien_ban": "50471126/BB-TC",
                 "ngay_phat_hanh": "04/11/2026",
@@ -244,15 +222,7 @@ def get_sample_batch() -> Dict[str, Any]:
                 "kiem_tra_ben_ngoai": "Bình thường",
                 "so_luong": "01",
                 "rows": [
-                    {
-                        "thiet_bi": "FCO 01",
-                        "rcd_truoc": ">10000",
-                        "rcd_sau": ">10000",
-                        "ac_kho": "60",
-                        "ac_uot": "50",
-                        "dong_cat": "5",
-                        "ket_qua": "Đạt",
-                    }
+                    {"thiet_bi": "FCO 01", "rcd_truoc": ">10000", "rcd_sau": ">10000", "ac_kho": "60", "ac_uot": "50", "dong_cat": "5", "ket_qua": "Đạt"}
                 ],
                 "tieu_chuan_kiem_dinh": "QCVN QTĐ-5,6,7: 2009/BCT",
                 "thiet_bi_kiem_dinh": "Kyoritsu 3125A; I/IOM 100",
@@ -264,13 +234,8 @@ def get_sample_batch() -> Dict[str, Any]:
             "stt_file": 48,
             "report_type": "dtnd",
             "filename": "48 BB điện trở nối đất.docx",
-            "images": [
-                {"label": "Biên bản Điện trở nối đất", "url": f"/api/sample-images/{SAMPLE_IMAGES['dtnd']}"},
-            ],
-            "ai_notes": [
-                "Mở rộng viết tắt 'Điện trở nối đất TBA' → 'Điện trở nối đất trạm biến áp'.",
-                "Sử dụng tiêu đề 'BIÊN BẢN THỬ NGHIỆM' đúng mẫu Điện trở nối đất.",
-            ],
+            "images": [{"label": "Biên bản Điện trở nối đất", "url": f"/api/sample-images/{SAMPLE_IMAGES['dtnd']}"}],
+            "ai_notes": ["Mở rộng viết tắt 'Điện trở nối đất TBA' → 'Điện trở nối đất trạm biến áp'."],
             "common": {
                 "so_bien_ban": "50481126/BB-TC",
                 "ngay_phat_hanh": "04/11/2026",
@@ -285,15 +250,7 @@ def get_sample_batch() -> Dict[str, Any]:
             },
             "signatory": signatory,
             "data": {
-                "rows": [
-                    {
-                        "stt": "1",
-                        "chi_danh": "Điện trở nối đất trạm biến áp",
-                        "ket_noi_trung_tinh": "Có",
-                        "loai_tiep_dat": "Làm việc",
-                        "gia_tri_do": "3,52",
-                    }
-                ],
+                "rows": [{"stt": "1", "chi_danh": "Điện trở nối đất trạm biến áp", "ket_noi_trung_tinh": "Có", "loai_tiep_dat": "Làm việc", "gia_tri_do": "3,52"}],
                 "thiet_bi_thu_nghiem": "KEW 4105DL",
                 "ghi_chu_1": "Chỉ danh, vị trí cọc nối đất do đơn vị yêu cầu thử nghiệm cung cấp",
                 "ghi_chu_2": "Các kết quả đo chỉ có giá trị đối với điểm đo",
@@ -301,9 +258,381 @@ def get_sample_batch() -> Dict[str, Any]:
         },
     ]
 
-    return {
-        "common_project": common_project,
-        "signatory": signatory,
-        "context_photos": context_photos,
-        "reports": reports,
+    return {"common_project": common_project, "signatory": signatory, "reports": reports}
+
+
+def get_dream_mekong_batch() -> Dict[str, Any]:
+    common_project = {
+        "ten_cong_trinh": "Trạm biến áp 1500kVA – CÔNG TY TNHH MỘT THÀNH VIÊN DREAM MEKONG",
+        "dia_chi": "Ấp An Thái, Xã Hội Cư, Tỉnh Đồng Tháp, Việt Nam",
+        "don_vi_yeu_cau": "CÔNG TY TNHH MỘT THÀNH VIÊN DREAM MEKONG",
+        "ly_do": "Định kỳ",
+        "noi_kiem_dinh": "Tại hiện trường",
+        "ngay_kiem_dinh": "25/10/2026",
+        "ngay_phat_hanh": "26/10/2026",
+        "stt_bat_dau": 92,
+        "ma_thang_nam": "1026",
     }
+
+    signatory = {
+        "nguoi_thu": "Nguyễn Trung Nghĩa",
+        "kiem_tra": "Nguyễn Minh Quân",
+        "pho_giam_doc": "Nguyễn Nhật Tân",
+        "include_signature": True,
+    }
+
+    cap_rows = []
+    six_10 = ["164,3", "163,7", "164,5", "162,9", "164,9", "165,8"]
+    twentyfour_30 = [
+        "493,2", "496,5", "494,3", "493,5", "491,0", "498,5",
+        "492,6", "494,7", "491,7", "497,2", "494,9", "498,1",
+        "496,8", "494,1", "492,3", "495,8", "492,0", "491,1",
+        "493,1", "493,9", "495,2", "492,9", "496,2", "495,4",
+    ]
+    for i, val in enumerate(six_10, start=1):
+        cap_rows.append({"stt": str(i), "dung_luong": "10", "r_cach_dien": ">2000", "dien_dung": val, "ket_qua": "Đạt"})
+    for i, val in enumerate(twentyfour_30, start=7):
+        cap_rows.append({"stt": str(i), "dung_luong": "30", "r_cach_dien": ">2000", "dien_dung": val, "ket_qua": "Đạt"})
+
+    reports = [
+        {
+            "id": "dm-092",
+            "stt_file": 92,
+            "report_type": "mba_3p",
+            "filename": "092 BB MBA 1500kVA.docx",
+            "images": [
+                {"label": "Trang 1/2 (MBA 3P)", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_mba_p1']}"},
+                {"label": "Trang 2/2 (MBA 3P)", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_mba_p2']}"},
+            ],
+            "ai_notes": [
+                "Tự động gộp Trang 1/2 (Mục I..III.4) và Trang 2/2 (Nấc 4..5 + Mục 5, 6, 7, IV, V) thành 1 biên bản MBA 3 pha.",
+                "Chuẩn hóa 'Thibidi' → 'THIBIDI', 'VN' → 'Việt Nam', Tổ đấu dây 'Dyn11'.",
+            ],
+            "common": {
+                "so_bien_ban": "50921026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN KIỂM ĐỊNH",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "MBA 3P 1500kVA",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "so_tem": "016140",
+                "hieu_may": "THIBIDI",
+                "so_may": "103150017",
+                "nuoc_san_xuat": "Việt Nam",
+                "nam_san_xuat": "2010",
+                "cong_suat_dinh_muc": "1500kVA",
+                "so_pha": "03",
+                "tan_so": "50 Hz",
+                "dien_ap_dinh_muc": "22/0.4kV",
+                "to_dau_day": "Dyn11",
+                "kiem_tra_ben_ngoai": "Bình thường",
+                "nhiet_do": "34⁰C",
+                "cach_dien_rows": [
+                    {"doi_tuong_do": "Cao – Vỏ", "r60": "15300", "r15": "11300", "kht": "1,35"},
+                    {"doi_tuong_do": "Cao – Hạ", "r60": "13700", "r15": "10200", "kht": "1,34"},
+                    {"doi_tuong_do": "Hạ – Vỏ", "r60": "8200", "r15": "6200", "kht": "1,32"},
+                ],
+                "dc_cao_ap_rows": [
+                    {"nac": "1", "ab": "3,413", "bc": "3,418", "ca": "3,421"},
+                    {"nac": "2", "ab": "3,332", "bc": "3,336", "ca": "3,339"},
+                    {"nac": "3", "ab": "3,251", "bc": "3,255", "ca": "3,258"},
+                    {"nac": "4", "ab": "3,169", "bc": "3,174", "ca": "3,177"},
+                    {"nac": "5", "ab": "3,088", "bc": "3,092", "ca": "3,095"},
+                ],
+                "dc_ha_an": "an: 0,885",
+                "dc_ha_bn": "bn: 0,887",
+                "dc_ha_cn": "cn: 0,889",
+                "ti_so_rows": [
+                    {"nac": "1", "k1": "57,759", "k2": "57,763", "k3": "57,764"},
+                    {"nac": "2", "k1": "56,384", "k2": "56,387", "k3": "56,388"},
+                    {"nac": "3", "k1": "55,019", "k2": "55,012", "k3": "55,013"},
+                    {"nac": "4", "k1": "53,633", "k2": "53,637", "k3": "53,638"},
+                    {"nac": "5", "k1": "52,258", "k2": "52,261", "k3": "52,262"},
+                ],
+                "khong_tai_u0": "400",
+                "khong_tai_i0": "5,19",
+                "khong_tai_i0_pct": "0,24",
+                "khong_tai_p0": "1210,3",
+                "ngan_mach_un": "1280,4",
+                "ngan_mach_un_pct": "5,82",
+                "ngan_mach_in": "39,36",
+                "ngan_mach_pn75": "12423,3",
+                "dien_ap_tang_cao_rows": [
+                    {"doi_tuong_thu": "Cao – (Hạ + vỏ)", "u_thu": "50", "thoi_gian": "1 phút"},
+                    {"doi_tuong_thu": "Hạ – (Cao + vỏ)", "u_thu": "3", "thoi_gian": "1 phút"},
+                ],
+                "thiet_bi_kiem_dinh": "Kyoritsu 3125A, C.A 6255, DTR 8510, HVTS-70/50, Multimeter, Variac.",
+                "ket_luan": "Máy biến áp 3 pha trên đạt yêu cầu đóng điện vận hành",
+            },
+        },
+        {
+            "id": "dm-093",
+            "stt_file": 93,
+            "report_type": "acb",
+            "filename": "093 BB ACB 2500A 016138.docx",
+            "images": [{"label": "Biên bản ACB 2500A", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_acb']}"}],
+            "ai_notes": ["Sử dụng mẫu MÁY CẮT HẠ THẾ (ACB) — BIÊN BẢN THỬ NGHIỆM; bổ sung thông số chuẩn LS AS-25E3-25H."],
+            "common": {
+                "so_bien_ban": "50931026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN THỬ NGHIỆM",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "ACB 2500A",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Tại hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "hieu": "LS",
+                "so_cuc": "03",
+                "loai": "ACB",
+                "kieu": "AS-25E3-25H",
+                "dien_ap_dinh_muc": "500V",
+                "dong_dien_dinh_muc": "2500A",
+                "dong_ngan_mach": "85kA",
+                "tan_so": "50/60Hz",
+                "dien_ap_cach_dien": "1000V",
+                "dien_ap_xung": "12kV",
+                "kiem_tra_ben_ngoai": "Bình thường",
+                "so_luong": "01",
+                "rows": [
+                    {
+                        "stt": "1",
+                        "rcd_close": ">5000",
+                        "rcd_open": ">5000",
+                        "rtx_a": "279",
+                        "rtx_b": "281",
+                        "rtx_c": "277",
+                        "utest": "3",
+                        "dong_cat": "5",
+                        "ket_qua": "Đạt",
+                        "so_tem": "016138",
+                    }
+                ],
+                "thiet_bi_kiem_dinh": "Kyoritsu 3165; Kyoritsu 3125A; CA 6255; CA 6292; HVT-70/50",
+                "tieu_chuan_kiem_dinh": "QCVN QTĐ-5: 2009/BCT; QT/TNMCĐ",
+                "ket_luan": "01 máy cắt hạ thế (ACB) trên đạt yêu cầu đóng điện vận hành.",
+            },
+        },
+        {
+            "id": "dm-094",
+            "stt_file": 94,
+            "report_type": "la",
+            "filename": "094 BB LA.docx",
+            "images": [{"label": "Biên bản LA (3 bộ)", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_la']}"}],
+            "ai_notes": ["Trích xuất đủ 3 bộ LA 01, LA 02, LA 03; đổi đơn vị MCOV '15300' → '15,3kV'."],
+            "common": {
+                "so_bien_ban": "50941026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN KIỂM ĐỊNH",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "LA 18kV-10kA",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Tại hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "vat_lieu_cach_dien": "Polymer",
+                "mcov": "15,3kV",
+                "dien_ap_dinh_muc": "18kV",
+                "tan_so": "50Hz",
+                "dong_dien_xa": "10kA",
+                "kiem_tra_ben_ngoai": "Bình thường",
+                "so_luong": "03",
+                "rows": [
+                    {"doi_tuong_do": "LA 01", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "17", "dien_ap_ac": "35"},
+                    {"doi_tuong_do": "LA 02", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "19", "dien_ap_ac": "35"},
+                    {"doi_tuong_do": "LA 03", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "13", "dien_ap_ac": "35"},
+                ],
+                "tieu_chuan_kiem_dinh": "QCVN QTĐ-5,6,7: 2009/BCT",
+                "thiet_bi_kiem_dinh": "Kyoritsu 3125A ; HVT-70/50",
+                "ket_luan": "Ba (03) chống sét van trên đạt yêu cầu đóng điện vận hành",
+            },
+        },
+        {
+            "id": "dm-095",
+            "stt_file": 95,
+            "report_type": "lbfco",
+            "filename": "095 BB LBFCO.docx",
+            "images": [{"label": "Biên bản LBFCO (3 bộ)", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_lbfco']}"}],
+            "ai_notes": ["Nhận diện mẫu CẦU CHÌ TỰ RƠI CÓ DẬP HỒ QUANG (LBFCO) — 03 Bộ (LBFCO 01..03)."],
+            "common": {
+                "so_bien_ban": "50951026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN KIỂM ĐỊNH",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "LBFCO – 100A",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Tại hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "vat_lieu_cach_dien": "Polymer",
+                "dong_dien_dinh_muc": "100A",
+                "dien_ap_dinh_muc": "24kV",
+                "kha_nang_cat_ngan_mach": "12kA",
+                "kiem_tra_ben_ngoai": "Bình thường",
+                "so_luong": "03 Bộ",
+                "rows": [
+                    {"thiet_bi": "LBFCO 01", "rcd_truoc": ">10000", "rcd_sau": ">10000", "ac_kho": "60", "ac_uot": "50", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"thiet_bi": "LBFCO 02", "rcd_truoc": ">10000", "rcd_sau": ">10000", "ac_kho": "60", "ac_uot": "50", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"thiet_bi": "LBFCO 03", "rcd_truoc": ">10000", "rcd_sau": ">10000", "ac_kho": "60", "ac_uot": "50", "dong_cat": "5", "ket_qua": "Đạt"},
+                ],
+                "tieu_chuan_kiem_dinh": "QCVN QTĐ-5,6,7: 2009/BCT",
+                "thiet_bi_kiem_dinh": "Kyoritsu 3125A; I/IOM 100",
+                "ket_luan": "Ba (03) LBFCO trên đạt yêu cầu đóng điện vận hành",
+            },
+        },
+        {
+            "id": "dm-096",
+            "stt_file": 96,
+            "report_type": "dtnd",
+            "filename": "096 BB Điện trở nối đất.docx",
+            "images": [{"label": "Biên bản Điện trở nối đất", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_dtnd']}"}],
+            "ai_notes": ["Kết quả đo tiếp địa làm việc trạm biến áp: 2,62 Ω."],
+            "common": {
+                "so_bien_ban": "50961026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN THỬ NGHIỆM",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "Điện trở nối đất",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Tại hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "rows": [{"stt": "1", "chi_danh": "Điện trở nối đất trạm biến áp", "ket_noi_trung_tinh": "Có", "loai_tiep_dat": "Làm việc", "gia_tri_do": "2,62"}],
+                "thiet_bi_thu_nghiem": "KEW 4105DL",
+                "ghi_chu_1": "Chỉ danh, vị trí cọc nối đất do đơn vị yêu cầu thử nghiệm cung cấp",
+                "ghi_chu_2": "Các kết quả đo chỉ có giá trị đối với điểm đo",
+            },
+        },
+        {
+            "id": "dm-097",
+            "stt_file": 97,
+            "report_type": "cap_ngam",
+            "filename": "097 BB Thông tuyến cáp ngầm TT.docx",
+            "images": [
+                {"label": "Trang 1/2 (Cáp ngầm TT)", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_cap_p1']}"},
+                {"label": "Trang 2/2 (Cáp ngầm TT)", "url": f"/api/sample-images/{SAMPLE_IMAGES['dm_cap_p2']}"},
+            ],
+            "ai_notes": ["Tự động gộp 2 trang ảnh Thông tuyến cáp ngầm trung thế (3 x 50mm², Uthử = 38,1kV trong 15 phút)."],
+            "common": {
+                "so_bien_ban": "50971026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN KIỂM ĐỊNH",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "Thông tuyến cáp ngầm trung thế",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Tại hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "so_tem": "016139",
+                "doan_cap_tu": "Trụ 82/1",
+                "doan_cap_den": "Trạm biến áp 1500kVA",
+                "loai_cap": "Cáp ngầm trung thế",
+                "tiet_dien": "3 x 50mm2",
+                "dien_ap_dinh_muc": "12,7/22(24)kV",
+                "tan_so": "50Hz",
+                "kiem_tra_ben_ngoai": "Bình thường",
+                "nhiet_do": "34⁰C",
+                "cach_dien_rows": [
+                    {"doi_tuong_do": "Pha 1 – (2+3+vỏ)", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                    {"doi_tuong_do": "Pha 2 – (1+3+vỏ)", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                    {"doi_tuong_do": "Pha 3 – (1+2+vỏ)", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                ],
+                "dc_tang_cao_rows": [
+                    {"doi_tuong_do": "Pha 1 – (2+3+vỏ)", "thoi_gian": "15", "dien_ap_thu": "38,1", "dong_ro": "17"},
+                    {"doi_tuong_do": "Pha 2 – (1+3+vỏ)", "thoi_gian": "15", "dien_ap_thu": "38,1", "dong_ro": "12"},
+                    {"doi_tuong_do": "Pha 3 – (1+2+vỏ)", "thoi_gian": "15", "dien_ap_thu": "38,1", "dong_ro": "15"},
+                ],
+                "thiet_bi_kiem_dinh": "Kyoritsu 3125A, HTV-70/50",
+                "ket_luan": "01 đoạn cáp 3 pha đạt yêu cầu đóng điện vận hành",
+            },
+        },
+        {
+            "id": "dm-109",
+            "stt_file": 109,
+            "report_type": "tu_bu",
+            "filename": "109 BB Tụ Bù.docx",
+            "images": [],
+            "ai_notes": ["Mẫu Tủ tụ bù hạ thế 780kVA gồm: 01 MCCB tổng 1200A, 06 MCCB nhánh 200A, 06 Contactor MC-150a và 30 bình tụ bù (6 bình 10kVAr + 24 bình 30kVAr)."],
+            "common": {
+                "so_bien_ban": "51091026/BB-TC",
+                "ngay_phat_hanh": "26/10/2026",
+                "loai_tieu_de": "BIÊN BẢN KIỂM ĐỊNH",
+                "ten_cong_trinh": common_project["ten_cong_trinh"],
+                "dia_chi": common_project["dia_chi"],
+                "chi_danh": "Tủ tụ bù 780kVA",
+                "don_vi_yeu_cau": common_project["don_vi_yeu_cau"],
+                "ly_do": "Định kỳ",
+                "noi_kiem_dinh": "Tại hiện trường",
+                "ngay_kiem_dinh": "25/10/2026",
+            },
+            "signatory": signatory,
+            "data": {
+                "kiem_tra_ben_ngoai": "Bình thường",
+                "mccb_tong_thong_so": "1200A, ABS 1203b, 415V, 65kA, 50Hz",
+                "mccb_tong_so_luong": "01",
+                "mccb_tong_rows": [
+                    {"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "325", "rtx_b": "329", "rtx_c": "327", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"}
+                ],
+                "mccb_nhanh_thong_so": "200A, ABN 203c, 380V, 30kA, 50Hz",
+                "mccb_nhanh_so_luong": "06",
+                "mccb_nhanh_rows": [
+                    {"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "271", "rtx_b": "275", "rtx_c": "272", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "2", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "276", "rtx_b": "270", "rtx_c": "274", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "3", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "272", "rtx_b": "273", "rtx_c": "276", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "4", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "279", "rtx_b": "278", "rtx_c": "279", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "5", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "270", "rtx_b": "272", "rtx_c": "271", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "6", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "278", "rtx_b": "276", "rtx_c": "271", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                ],
+                "contactor_thong_so": "LS, MC-150a",
+                "contactor_so_luong": "06",
+                "contactor_rows": [
+                    {"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "277", "rtx_b": "272", "rtx_c": "274", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "2", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "272", "rtx_b": "279", "rtx_c": "276", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "3", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "276", "rtx_b": "273", "rtx_c": "271", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "4", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "275", "rtx_b": "276", "rtx_c": "277", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "5", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "278", "rtx_b": "274", "rtx_c": "273", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                    {"stt": "6", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "271", "rtx_b": "272", "rtx_c": "275", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"},
+                ],
+                "tu_bu_so_luong": "30",
+                "tu_bu_rows": cap_rows,
+                "thiet_bi_kiem_dinh": "Kyoritsu 3165; Kyoritsu 3125A; CA 6255; CA 6292; HVT-70/50; CA 6555; Megger DPM1000.",
+                "tieu_chuan_kiem_dinh": "QCVN QTĐ-5: 2009/BCT; QT/TNMCĐ",
+                "ket_luan": "Tủ tụ bù trên đạt yêu cầu đóng điện vận hành",
+            },
+        },
+    ]
+
+    return {"common_project": common_project, "signatory": signatory, "reports": reports}
+
+
+def get_sample_batch(station: str = "dream_mekong") -> Dict[str, Any]:
+    if station == "egreen":
+        return get_egreen_batch()
+    return get_dream_mekong_batch()

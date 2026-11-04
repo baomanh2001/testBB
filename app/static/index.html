@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Toàn Cầu — Đọc Ảnh Biên Bản Hiện Trường & Xuất Word (.docx)</title>
+  <title>Toàn Cầu — Đọc Ảnh Biên Bản Hiện Trường &amp; Xuất Word (.docx) — 10 Mẫu Chuẩn</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -13,15 +13,20 @@
       <img src="/static/assets/logo.jpeg" alt="Logo Toàn Cầu" class="brand-logo" />
       <div class="brand-text">
         <h1>CÔNG TY CP THÍ NGHIỆM ĐIỆN TOÀN CẦU</h1>
-        <p>Hệ thống đọc ảnh biên bản viết tay hiện trường &amp; xuất file Word (.docx) chuẩn mẫu</p>
+        <p>Đọc ảnh biên bản viết tay hiện trường (Gemini 3.8 Flash / OpenAI) &amp; xuất chuẩn 10 mẫu Word (.docx)</p>
       </div>
     </div>
 
     <div class="topbar-actions">
-      <button id="btnLoadSamples" class="btn btn-outline" title="Nạp bộ 7 ảnh hiện trường & 5 biên bản mẫu trạm E-GREEN">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>Nạp mẫu E-GREEN (7 ảnh)</span>
-      </button>
+      <div style="display:inline-flex;align-items:center;gap:4px;">
+        <select id="selectSampleStation" style="padding:6px 10px;border-radius:6px;border:1px solid #c0cad8;font-size:12.5px;font-weight:600;color:#0f172a;background:#fff;">
+          <option value="dream_mekong" selected>Mẫu: TBA 1500kVA Dream Mekong (7 BB)</option>
+          <option value="egreen">Mẫu: TBA 50kVA E-GREEN (5 BB)</option>
+        </select>
+        <button id="btnLoadSamples" class="btn btn-outline" title="Nạp bộ ảnh hiện trường & biên bản mẫu thực tế">
+          <span>Nạp mẫu</span>
+        </button>
+      </div>
 
       <button id="btnBatchSettings" class="btn btn-outline" title="Đồng bộ thông tin trạm, người ký & đánh số biên bản hàng loạt">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -30,7 +35,7 @@
 
       <button id="btnAiConfig" class="btn btn-ai-status">
         <span id="aiStatusDot" class="status-dot"></span>
-        <span id="aiStatusLabel">Cấu hình AI Vision</span>
+        <span id="aiStatusLabel">Cấu hình AI (Gemini 3.8 Flash)</span>
       </button>
 
       <button id="btnExportZip" class="btn btn-primary">
@@ -50,7 +55,7 @@
         </svg>
         <div>
           <strong>Kéo thả hoặc bấm chọn bộ ảnh biên bản viết tay (+ ảnh công tơ / nhãn trạm)</strong>
-          <span class="sub">Hỗ trợ nhiều ảnh cùng lúc — Tự động gộp biên bản nhiều trang (MBA 1P) &amp; chuẩn hóa thông số</span>
+          <span class="sub">Hỗ trợ nhiều ảnh cùng lúc — Tự động gộp biên bản 2 trang (MBA 1P/3P, Cáp ngầm TT) &amp; chuẩn hóa đủ 10 mẫu Toàn Cầu</span>
         </div>
       </div>
       <div class="dropzone-buttons">
@@ -75,11 +80,16 @@
       <div class="dropdown">
         <button id="btnAddManual" class="btn btn-sm btn-outline">+ Thêm biên bản mới ▾</button>
         <div id="addManualMenu" class="dropdown-menu hidden">
-          <button data-type="mba_1p">1. Máy biến áp 1 pha (MBA 1P)</button>
-          <button data-type="mccb">2. Máy cắt hạ thế (MCCB)</button>
-          <button data-type="la">3. Chống sét van (LA)</button>
-          <button data-type="fco">4. Cầu chì tự rơi (FCO)</button>
-          <button data-type="dtnd">5. Điện trở nối đất (ĐTNĐ)</button>
+          <button data-type="mba_3p">1. Máy biến áp 3 pha (MBA 3P)</button>
+          <button data-type="mba_1p">2. Máy biến áp 1 pha (MBA 1P)</button>
+          <button data-type="acb">3. Máy cắt hạ thế (ACB)</button>
+          <button data-type="mccb">4. Máy cắt hạ thế (MCCB)</button>
+          <button data-type="la">5. Chống sét van (LA)</button>
+          <button data-type="lbfco">6. Cầu chì tự rơi có dập hồ quang (LBFCO)</button>
+          <button data-type="fco">7. Cầu chì tự rơi (FCO)</button>
+          <button data-type="dtnd">8. Điện trở nối đất (ĐTNĐ)</button>
+          <button data-type="cap_ngam">9. Thông tuyến cáp ngầm trung thế</button>
+          <button data-type="tu_bu">10. Tủ tụ bù hạ thế</button>
         </div>
       </div>
       <button id="btnRenumberAll" class="btn btn-sm btn-outline" title="Cập nhật lại Số biên bản & Tên file theo thứ tự">
@@ -97,12 +107,12 @@
         <div class="viewer-controls">
           <input type="file" id="attachPhotoInput" accept="image/*" multiple hidden />
           <button id="btnAttachPhoto" class="icon-btn" title="Gắn thêm ảnh vào biên bản này">+ Ảnh</button>
-          <button id="btnZoomOut" class="icon-btn" title="Thu nhỏ">−</button>
+          <button id="btnZoomOut" class="icon-btn" title="Thu nhỏ">&minus;</button>
           <span id="zoomLabel" class="zoom-label">100%</span>
           <button id="btnZoomIn" class="icon-btn" title="Phóng to">+</button>
           <button id="btnZoomReset" class="icon-btn" title="Vừa khung">Vừa khung</button>
-          <button id="btnRotateLeft" class="icon-btn" title="Xoay trái 90°">↺</button>
-          <button id="btnRotateRight" class="icon-btn" title="Xoay phải 90°">↻</button>
+          <button id="btnRotateLeft" class="icon-btn" title="Xoay trái 90°">&#8634;</button>
+          <button id="btnRotateRight" class="icon-btn" title="Xoay phải 90°">&#8635;</button>
           <button id="btnReocrCurrent" class="icon-btn icon-btn-ai" title="Dùng AI đọc lại các ảnh của biên bản đang chọn">✨ Đọc lại AI</button>
         </div>
       </div>
@@ -150,9 +160,9 @@
     <div class="empty-card">
       <img src="/static/assets/logo.jpeg" alt="Toàn Cầu" width="72" />
       <h2>Chưa có biên bản nào trong phiên làm việc</h2>
-      <p>Tải ảnh chụp biên bản viết tay ở thanh phía trên để AI tự động trích xuất, hoặc bấm nạp bộ mẫu trạm E-GREEN để trải nghiệm ngay.</p>
+      <p>Tải ảnh chụp biên bản viết tay ở thanh phía trên để AI tự động trích xuất, hoặc nạp thử 1 trong 2 bộ hồ sơ mẫu thực tế.</p>
       <div class="empty-actions">
-        <button id="btnEmptyLoadSample" class="btn btn-primary">Nạp thử 7 ảnh mẫu E-GREEN</button>
+        <button id="btnEmptyLoadSample" class="btn btn-primary">Nạp bộ mẫu thực tế</button>
         <button id="btnEmptyUpload" class="btn btn-outline">Tải ảnh biên bản từ máy</button>
       </div>
     </div>
@@ -170,21 +180,31 @@
           <div class="field">
             <label>Nhà cung cấp AI Vision</label>
             <select id="cfgProvider">
-              <option value="gemini">Google Gemini API (Khuyên dùng - Có gói miễn phí)</option>
+              <option value="gemini">Google Gemini API (Gemini 3.8 Flash - Khuyên dùng)</option>
               <option value="openai">OpenAI Vision API (GPT-4o / GPT-4.1)</option>
             </select>
           </div>
           <div class="field">
-            <label>Model nhận diện</label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <label style="margin:0;">Model nhận diện</label>
+              <button id="btnFetchLiveModels" type="button" style="background:none;border:none;color:#2563eb;font-size:11.5px;font-weight:600;cursor:pointer;padding:0;">
+                ↻ Tải danh sách từ API
+              </button>
+            </div>
             <select id="cfgModel"></select>
           </div>
+        </div>
+
+        <div id="cfgCustomModelWrap" class="field hidden">
+          <label>Mã Model tùy chỉnh (ví dụ: <code>gemini-3.8-flash</code>)</label>
+          <input type="text" id="cfgCustomModel" placeholder="Nhập chính xác Model ID..." autocomplete="off" />
         </div>
 
         <div class="field">
           <label id="cfgApiKeyLabel">API Key</label>
           <input type="password" id="cfgApiKey" placeholder="Dán API Key của bạn vào đây..." autocomplete="off" />
           <small id="cfgHelpText" class="help-text">
-            Lấy mã Gemini miễn phí tại <strong>aistudio.google.com/apikey</strong>. API Key chỉ lưu cục bộ trên trình duyệt của bạn.
+            Mặc định dùng <strong>Gemini 3.8 Flash</strong> (<code>gemini-3.8-flash</code>). Lấy mã Gemini miễn phí tại <strong>aistudio.google.com/apikey</strong>. Key chỉ lưu cục bộ trên trình duyệt.
           </small>
         </div>
 
@@ -194,8 +214,8 @@
         </div>
 
         <div class="field">
-          <label>Gợi ý ngữ cảnh bổ sung cho AI (Tùy chọn — VD: địa chỉ chi tiết khu phố/phường)</label>
-          <input type="text" id="cfgExtraHint" placeholder="VD: Khu phố Gia Huỳnh, Phường Trảng Bàng, Tỉnh Tây Ninh, Việt Nam" />
+          <label>Gợi ý ngữ cảnh bổ sung cho AI (Tùy chọn — VD: địa chỉ chi tiết khu phố/ấp/xã)</label>
+          <input type="text" id="cfgExtraHint" placeholder="VD: Ấp An Thái, Xã Hội Cư, Tỉnh Đồng Tháp, Việt Nam" />
         </div>
       </div>
       <div class="modal-footer">
@@ -221,20 +241,20 @@
         <h4 class="section-subtitle">1. Quy tắc đánh số biên bản &amp; Ngày tháng</h4>
         <div class="form-grid-4">
           <div class="field">
-            <label>STT bắt đầu (VD: 44)</label>
-            <input type="number" id="batchSttStart" value="44" min="1" />
+            <label>STT bắt đầu (VD: 92, 44)</label>
+            <input type="number" id="batchSttStart" value="92" min="1" />
           </div>
           <div class="field">
             <label>Mã ThángNăm (MMYY)</label>
-            <input type="text" id="batchMonthYear" value="1126" placeholder="1126" />
+            <input type="text" id="batchMonthYear" value="1026" placeholder="1026" />
           </div>
           <div class="field">
             <label>Ngày kiểm định</label>
-            <input type="text" id="batchNgayKiemDinh" value="01/11/2026" placeholder="DD/MM/YYYY" />
+            <input type="text" id="batchNgayKiemDinh" value="25/10/2026" placeholder="DD/MM/YYYY" />
           </div>
           <div class="field">
             <label>Ngày phát hành BB</label>
-            <input type="text" id="batchNgayPhatHanh" value="04/11/2026" placeholder="DD/MM/YYYY" />
+            <input type="text" id="batchNgayPhatHanh" value="26/10/2026" placeholder="DD/MM/YYYY" />
           </div>
         </div>
 
@@ -256,7 +276,7 @@
         <div class="form-grid-2">
           <div class="field">
             <label>Lý do kiểm định / thử nghiệm</label>
-            <input type="text" id="batchLyDo" value="Sau sự cố" />
+            <input type="text" id="batchLyDo" value="Định kỳ" />
           </div>
           <div class="field">
             <label>Nơi kiểm định</label>

@@ -1,6 +1,6 @@
 # Hệ thống Đọc Ảnh Biên Bản Hiện Trường & Xuất Word (.docx) — Toàn Cầu
 
-Ứng dụng Web chuyên dụng cho **Công ty CP Thí nghiệm điện Toàn Cầu** giúp chuyển tự động **ảnh chụp biên bản viết tay tại hiện trường** (kèm ảnh phụ trợ như công tơ điện, nhãn máy, biển tên trạm) sang bộ **file Word (`.docx`) chuẩn 100% biểu mẫu công ty** (giữ nguyên logo, watermark chìm, bảng biểu, đánh số La Mã, footer và chữ ký nhúng).
+Ứng dụng Web chuyên dụng cho **Công ty CP Thí nghiệm điện Toàn Cầu** giúp chuyển tự động **ảnh chụp biên bản viết tay tại hiện trường** (kèm ảnh phụ trợ như công tơ điện, nhãn máy, biển tên trạm) sang bộ **file Word (`.docx`) theo biểu mẫu công ty** (giữ nguyên logo, watermark chìm, bảng biểu, đánh số La Mã, footer và chữ ký nhúng).
 
 ---
 
@@ -12,11 +12,19 @@
 4. **Cầu chì tự rơi (`FCO`)** — Tự động nhận diện giá trị sửa tay trên giấy, hỗ trợ nhiều FCO.
 5. **Điện trở nối đất (`ĐTNĐ`)** — Đúng tiêu đề *BIÊN BẢN THỬ NGHIỆM*, hỗ trợ nhiều điểm đo tiếp địa.
 
+6. **Máy biến áp 3 pha (`MBA 3P`)** — bảng cách điện, điện trở và tỉ số biến theo nấc.
+7. **Máy cắt hạ thế (`ACB`)**.
+8. **Cầu chì tự rơi có dập hồ quang (`LBFCO`)**.
+9. **Thông tuyến cáp ngầm trung thế**.
+10. **Tủ tụ bù hạ thế** — các bảng MCCB tổng, nhánh, contactor và tụ.
+
+Hai bộ dữ liệu mẫu có thể chọn trên giao diện: Dream Mekong 1500kVA (7 biên bản) và E-GREEN 50kVA (5 biên bản). Bản xem trước của các mẫu mới là bản tóm tắt, không đảm bảo bố cục giống Word; hãy kiểm tra file Word trước khi sử dụng. AI có thể đọc sai hoặc bỏ sót: luôn đối chiếu ảnh gốc, số liệu và chữ ký trước khi phát hành.
+
 ---
 
 ## 2. Tính năng nổi bật
 
-- **Hỗ trợ kép AI Vision**: Chọn linh hoạt **Google Gemini** (`gemini-2.5-flash` — có gói miễn phí từ Google AI Studio, `gemini-2.5-pro`) hoặc **OpenAI** (`gpt-4o`, `gpt-4.1`), kèm chế độ nhập/chỉnh sửa trực tiếp không cần key.
+- **Hỗ trợ kép AI Vision**: Chọn linh hoạt **Google Gemini** (`gemini-3.8-flash` mặc định; có thể chọn hoặc nhập model khác tùy quyền truy cập API) hoặc **OpenAI** (`gpt-4o`, `gpt-4.1`), kèm chế độ nhập/chỉnh sửa trực tiếp không cần key.
 - **Đối chiếu Song song (Split-Screen)**: Bên trái là trình soi ảnh gốc (phóng to/thu nhỏ lăn chuột, kéo giữ, xoay trái/phải 90°), bên phải là Form chỉnh sửa số liệu & **Xem trước trang A4 chuẩn in**.
 - **Đồng bộ cả lô Trạm biến áp**: Chỉnh 1 lần *Tên công trình, Địa chỉ, Đơn vị yêu cầu, Ngày kiểm định, Ngày phát hành, STT bắt đầu (`44, 45...`), Bộ 3 người ký & Chữ ký ảnh* → áp dụng tự động cho toàn bộ biên bản trong trạm.
 - **Tải lẻ `.docx` hoặc Tải trọn bộ `.zip`**: Xuất trực tiếp chuẩn `.docx` mở mượt trên mọi phiên bản Microsoft Word.
