@@ -1425,6 +1425,166 @@ class TestAiFallback:
         assert "gemini-2.5-flash" in body["fallback"][0]
 
 
+class TestBatchGroups:
+    """Nhiều ảnh / nhiều nhóm: gộp kết quả nhận dạng thành một bộ biên bản."""
+
+    TT = {"ten_cong_trinh": "Trạm A", "dia_chi": "Tây Ninh",
+          "don_vi_yeu_cau": "E-GREEN", "ly_do_kiem_dinh": "Sau sự cố",
+          "noi_kiem_dinh": "Tại hiện trường", "ngay_kiem_dinh": "01/11/2026"}
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def test_two_groups_same_form_append_rows(self):
+        """Hai nhóm cùng mẫu 45 = hai đợt thiết bị → nối bảng, đánh lại STT."""
+        from bienban.schema import merge_results
+
+        a = {"thong_tin_chung": self.TT,
+             "bien_ban_45_mccb": {"so_bien_ban": "5045/BB-TC", "hieu": "MITSUBISHI",
+                                  "rows": [{"stt": "1", "utest": "3", "so_tem": "017215"}]}}
+        b = {"thong_tin_chung": {"dia_chi": "Bình Dương"},
+             "bien_ban_45_mccb": {"so_bien_ban": "9999/BB-TC", "hieu": "ABB",
+                                  "rows": [{"stt": "1", "utest": "5", "so_tem": "777"}]}}
+        data, notes = merge_results([a, b])
+        rows = data["bien_ban_45_mccb"]["rows"]
+        assert len(rows) == 2
+        assert [r["stt"] for r in rows] == ["01", "02"]
+        assert [r["so_tem"] for r in rows] == ["017215", "777"]
+        # ô đơn: giữ giá trị nhóm đầu, không bị nhóm sau ghi đè
+        assert data["bien_ban_45_mccb"]["so_bien_ban"] == "5045/BB-TC"
+        assert data["bien_ban_45_mccb"]["hieu"] == "MITSUBISHI"
+        # thông tin chung: chỉ bổ sung ô trống
+        assert data["thong_tin_chung"]["dia_chi"] == "Tây Ninh"
+        assert data["thong_tin_chung"]["ten_cong_trinh"] == "Trạm A"
+        assert any("gộp thêm 1 dòng" in n for n in notes)
+
+    def test_common_filled_when_first_group_blank(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([
+            {"thong_tin_chung": {"ten_cong_trinh": "Trạm A"}, "bien_ban_48_tiep_dat": {}},
+            {"thong_tin_chung": {"dia_chi": "Tây Ninh", "ten_cong_trinh": "Trạm B"},
+             "bien_ban_48_tiep_dat": {"gia_tri_do_Ohm": "3,52"}},
+        ])
+        tt = data["thong_tin_chung"]
+        assert tt["dia_chi"] == "Tây Ninh"        # ô trống -> lấy nhóm sau
+        assert tt["ten_cong_trinh"] == "Trạm A"   # đã có -> giữ nhóm đầu
+
+    def test_crew_names_merged_field_by_field(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([
+            {"thong_tin_chung": {"can_bo_ky_ten": {"nguoi_thu": "Quân"}}, "bien_ban_44_mba": {}},
+            {"thong_tin_chung": {"can_bo_ky_ten": {"nguoi_kiem_tra": "Nghĩa",
+                                                   "nguoi_thu": "Khác"}}, "bien_ban_44_mba": {}},
+        ])
+        crew = data["thong_tin_chung"]["can_bo_ky_ten"]
+        assert crew["nguoi_thu"] == "Quân"
+        assert crew["nguoi_kiem_tra"] == "Nghĩa"
+
+    def test_different_forms_side_by_side(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([
+            {"thong_tin_chung": self.TT, "bien_ban_45_mccb": {"so_luong": "01"}},
+            {"thong_tin_chung": self.TT, "bien_ban_46_la": {"so_luong": "02"}},
+        ])
+        assert data["bien_ban_45_mccb"]["so_luong"] == "01"
+        assert data["bien_ban_46_la"]["so_luong"] == "02"
+
+    def test_series_not_appended(self):
+        """Dãy số cố định (5 nấc) không nối thêm — giữ dãy nhóm đầu + ghi chú."""
+        from bienban.schema import merge_results
+
+        a = {"bien_ban_44_mba": {"ti_so_bien_ap": {"ha_1": ["1", "2"]}}}
+        b = {"bien_ban_44_mba": {"ti_so_bien_ap": {"ha_1": ["9", "9"]}}}
+        data, notes = merge_results([a, b])
+        assert data["bien_ban_44_mba"]["ti_so_bien_ap"]["ha_1"] == ["1", "2"]
+        assert any("dãy số" in n for n in notes)
+
+    def test_nested_table_rows_dict_form(self):
+        """Bảng ở dạng ``rows: {rows: [...]}`` cũng nối được."""
+        from bienban.schema import merge_results
+
+        a = {"bien_ban_47_fco": {"rows": {"rows": [{"stt": "1", "thiet_bi": "FCO 01"}]}}}
+        b = {"bien_ban_47_fco": {"rows": {"rows": [{"stt": "1", "thiet_bi": "FCO 02"}]}}}
+        data, _ = merge_results([a, b])
+        rows = data["bien_ban_47_fco"]["rows"]["rows"]
+        assert [r["thiet_bi"] for r in rows] == ["FCO 01", "FCO 02"]
+        assert [r["stt"] for r in rows] == ["01", "02"]
+
+    def test_single_group_unchanged(self):
+        from bienban.schema import merge_results
+
+        only = {"thong_tin_chung": self.TT, "bien_ban_48_tiep_dat": {"gia_tri_do_Ohm": "3,52"}}
+        data, notes = merge_results([only])
+        assert data == only
+        assert notes == []
+
+    def test_ignores_meta_key(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([{"bien_ban_48_tiep_dat": {"x": "1"}, "_ai": {"notes": ["a"]}}])
+        assert "_ai" not in data
+
+    # ---- API ----
+    def test_api_merge_ok(self, client):
+        body = client.post("/api/merge", json={"results": [
+            {"thong_tin_chung": self.TT,
+             "bien_ban_46_la": {"so_luong": "01", "rows": {"rows": [{"stt": "1"}]}}},
+            {"thong_tin_chung": self.TT,
+             "bien_ban_46_la": {"so_luong": "09", "rows": {"rows": [{"stt": "1"}]}}},
+        ]}).get_json()
+        assert body["ok"] is True
+        assert body["blocks"] == ["bien_ban_46_la"]
+        assert len(body["data"]["bien_ban_46_la"]["rows"]["rows"]) == 2
+        assert body["data"]["bien_ban_46_la"]["so_luong"] == "01"
+        assert body["notes"]
+
+    def test_api_merge_needs_results(self, client):
+        r = client.post("/api/merge", json={"results": []})
+        assert r.status_code == 400
+        r2 = client.post("/api/merge", json={})
+        assert r2.status_code == 400
+
+    def test_api_merge_rejects_garbage(self, client):
+        r = client.post("/api/merge", json={"results": [{"foo": "bar"}]})
+        assert r.status_code == 422
+
+    def test_api_merge_output_renders(self, client, tmp_path):
+        """Dữ liệu gộp phải sinh được biên bản thật."""
+        from bienban.fill import render_all
+        from bienban.schema import merge_results
+        from bienban.spec import TEMPLATES
+
+        rows_a = [{"stt": "1", "utest": "3", "so_tem": "017215", "ket_qua": "Đạt",
+                   "rcd_close": ">5000", "rcd_open": ">5000",
+                   "rtx_a": "273", "rtx_b": "275", "rtx_c": "279", "dong_cat": "5"}]
+        rows_b = [{"stt": "1", "utest": "5", "so_tem": "017299", "ket_qua": "Đạt",
+                   "rcd_close": ">5000", "rcd_open": ">5000",
+                   "rtx_a": "280", "rtx_b": "281", "rtx_c": "282", "dong_cat": "5"}]
+        block = {"so_bien_ban": "5045/BB-TC", "hieu": "MITSUBISHI", "kieu": "NF-250",
+                 "loai": "MCCB", "so_luong": "02", "so_cuc": "03", "u_test_kV": "3",
+                 "dong_dinh_muc": "250A", "dien_ap_dinh_muc": "400V",
+                 "chi_danh": "MCCB 250A", "ket_qua": "Đạt"}
+        data, _ = merge_results([
+            {"thong_tin_chung": self.TT, "bien_ban_45_mccb": dict(block, rows=rows_a)},
+            {"thong_tin_chung": self.TT, "bien_ban_45_mccb": dict(block, rows=rows_b)},
+        ])
+        assert len(data["bien_ban_45_mccb"]["rows"]) == 2
+        paths, warnings = render_all(data, templates_dir=ROOT / "templates",
+                                     out_dir=tmp_path, forms=["45"])
+        assert len(paths) == 1 and paths[0].exists() and paths[0].stat().st_size > 50_000
+        assert not [w for w in warnings if "lỗi" in w.lower()]
+
+
 class TestWatermark:
     """Hình nền chính thống: logo công ty làm dấu chìm trong mọi biên bản."""
 

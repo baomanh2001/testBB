@@ -56,8 +56,12 @@
         <div class="thumbs" id="thumbs"></div>
         <div class="lightbox" id="lightbox" hidden></div>
         <div class="row tight" id="imgActions" style="display:none">
+          <button class="small" id="btnGroup" title="Tách ảnh thành từng biên bản riêng">
+            🗂 Chia nhóm</button>
           <button class="ghost small" id="btnClear">Xoá hết ảnh</button>
         </div>
+        <!-- chia nhóm thủ công: mỗi nhóm = 1 biên bản -->
+        <div id="groups" class="groups" hidden></div>
       </div>
     </section>
 
@@ -929,10 +933,16 @@ function renderThumbs(){
     const im = IMAGES[i];
     URL.revokeObjectURL(im.url);
     idbDelete(im.dbId);                 // xoá luôn bản lưu để F5 không hiện lại
+    // giữ nhóm khớp chỉ số: bỏ ảnh i, các ảnh sau dồn lên 1
+    if(GROUPS.length){
+      GROUPS.forEach(g => { g.idx = g.idx.filter(x => x !== i).map(x => x > i ? x - 1 : x); });
+      GROUPS = GROUPS.filter(g => g.idx.length);
+    }
     IMAGES.splice(i, 1);
     if(!$("lightbox").hidden){
       if(!IMAGES.length) lightboxClose(); else { VIEW.i = Math.min(VIEW.i, IMAGES.length - 1); drawLightbox(); }
     }
+    if(groupsEnabled()){ syncGroupsWithImages(); renderGroups(); }
     renderThumbs();
   });
   [...document.querySelectorAll("[data-view]")].forEach(b => b.onclick = () => lightboxOpen(Number(b.dataset.view)));
@@ -951,6 +961,7 @@ function addFiles(list){
     idbPut(f, "").then(id => { if(id != null) rec.dbId = id; }).catch(() => {});
   }
   if(skipped) setAiStatus(`${skipped} file không phải ảnh đã bị bỏ qua.`, "warn");
+  if(groupsEnabled()){ syncGroupsWithImages(); renderGroups(); }
   renderThumbs();
 }
 $("drop").onclick = () => $("file").click();
@@ -962,7 +973,233 @@ $("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
   e.preventDefault(); $("drop").classList.remove("hot"); }));
 $("drop").addEventListener("drop", e => addFiles(e.dataTransfer.files));
 $("btnClear").onclick = () => {
-  idbClear(); IMAGES.forEach(i => URL.revokeObjectURL(i.url)); IMAGES = []; renderThumbs(); };
+  idbClear(); IMAGES.forEach(i => URL.revokeObjectURL(i.url)); IMAGES = [];
+  closeGroups(); renderThumbs(); };
+
+/* ---------------- chia nhóm thủ công (mỗi nhóm = 1 biên bản) ---------------- */
+/* GROUPS[i] = {form: "45" | "" (AI tự nhận), idx: [chỉ số ảnh trong IMAGES]} */
+let GROUPS = [];
+
+function groupsEnabled(){ return !$("groups").hidden; }
+function defaultGroupForm(i){ return ""; }     // "" = để AI tự nhận mẫu
+
+function openGroups(){
+  if(!IMAGES.length){ setAiStatus("Chưa chọn ảnh nào.", "warn"); return; }
+  if(!GROUPS.length){
+    // mặc định: mỗi ảnh một nhóm — người dùng gộp lại những ảnh cùng một tờ
+    GROUPS = IMAGES.map((_, i) => ({form: defaultGroupForm(i), idx: [i]}));
+  }
+  GROUPS = GROUPS.map(g => ({...g, idx: g.idx.filter(i => i < IMAGES.length)})).filter(g => g.idx.length);
+  syncGroupsWithImages();
+  $("groups").hidden = false;
+  renderGroups();
+}
+function closeGroups(){
+  $("groups").hidden = true;
+  GROUPS = [];
+  const rb = $("btnRecognize");
+  if(rb) rb.innerHTML = "✨ Nhận dạng ảnh → điền form";
+  renderThumbs();
+}
+/* Ảnh mới thêm vào thì tự thành nhóm riêng; ảnh đã xoá thì bỏ khỏi nhóm. */
+function syncGroupsWithImages(){
+  if(!GROUPS.length) return;
+  const used = new Set(GROUPS.flatMap(g => g.idx));
+  IMAGES.forEach((_, i) => { if(!used.has(i)) GROUPS.push({form: defaultGroupForm(i), idx: [i]}); });
+  GROUPS.forEach(g => { g.idx = g.idx.filter(i => i < IMAGES.length); });
+  GROUPS = GROUPS.filter(g => g.idx.length);
+}
+
+function groupLabel(g, gi){
+  const forms = Object.keys(SCHEMA.forms).sort();
+  const opts = [`<option value="">AI tự nhận mẫu</option>`]
+    .concat(forms.map(f => `<option value="${f}" ${g.form === f ? "selected" : ""}>Mẫu ${f} — ${esc(SCHEMA.forms[f].title)}</option>`));
+  return `<div class="ghead">
+      <b>Nhóm ${gi + 1}</b>
+      <span class="gcount">${g.idx.length} ảnh</span>
+      <select data-gform="${gi}" aria-label="Mẫu của nhóm ${gi + 1}">${opts.join("")}</select>
+      <button class="small ghost" data-gdel="${gi}" title="Bỏ nhóm này"
+              aria-label="Bỏ nhóm ${gi + 1}">✕</button>
+    </div>`;
+}
+
+function renderGroups(){
+  const box = $("groups");
+  if(!box) return;
+  // nút nhận dạng đổi nhãn để người dùng biết sẽ chạy theo nhóm
+  const rb = $("btnRecognize");
+  if(rb) rb.innerHTML = (GROUPS.length && groupsEnabled())
+    ? `✨ Nhận dạng ${GROUPS.length} nhóm → ${GROUPS.length} biên bản`
+    : "✨ Nhận dạng ảnh → điền form";
+  if(!GROUPS.length || !groupsEnabled()){ box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="gintro">
+      <b>${GROUPS.length} nhóm → ${GROUPS.length} biên bản.</b>
+      Kéo ảnh vào đúng nhóm; ảnh cùng một tờ (mặt trước + mặt sau) cho vào cùng nhóm.
+      Để “AI tự nhận mẫu” nếu không chắc.
+    </div>` + GROUPS.map((g, gi) => `
+    <div class="gcard" data-gi="${gi}">
+      ${groupLabel(g, gi)}
+      <div class="gdrop" data-gdrop="${gi}">
+        ${g.idx.map(i => `
+          <div class="gitem" draggable="true" data-img="${i}" data-from="${gi}">
+            <img src="${IMAGES[i].url}" alt="Ảnh ${i + 1}" />
+            <span class="n">${i + 1}</span>
+            <button class="grm" data-grm="${gi}:${i}" title="Đưa ảnh ra khỏi nhóm"
+                    aria-label="Đưa ảnh ${i + 1} ra khỏi nhóm">✕</button>
+          </div>`).join("") || `<span class="gnone">Kéo ảnh vào đây</span>`}
+      </div>
+      <div class="gfoot">
+        <button class="small" data-gsplit="${gi}" title="Tách nhóm này thành từng ảnh riêng">Tách từng ảnh</button>
+        <button class="small" data-gadd="${gi}">+ Nhóm trống</button>
+      </div>
+    </div>`).join("");
+
+  box.querySelectorAll("[data-gform]").forEach(sel => {
+    sel.onchange = () => { GROUPS[Number(sel.dataset.gform)].form = sel.value; };
+  });
+  box.querySelectorAll("[data-gdel]").forEach(b => {
+    b.onclick = () => { const gi = Number(b.dataset.gdel); GROUPS.splice(gi, 1); renderGroups(); };
+  });
+  box.querySelectorAll("[data-gsplit]").forEach(b => {
+    b.onclick = () => {
+      const gi = Number(b.dataset.gsplit);
+      const g = GROUPS[gi];
+      GROUPS.splice(gi, 1, ...g.idx.map(i => ({form: g.form, idx: [i]})));
+      renderGroups();
+    };
+  });
+  box.querySelectorAll("[data-gadd]").forEach(b => {
+    b.onclick = () => { GROUPS.splice(Number(b.dataset.gadd) + 1, 0, {form: "", idx: []}); renderGroups(); };
+  });
+  box.querySelectorAll("[data-grm]").forEach(b => {
+    b.onclick = () => {
+      const [gi, i] = b.dataset.grm.split(":").map(Number);
+      GROUPS[gi].idx = GROUPS[gi].idx.filter(x => x !== i);
+      GROUPS = GROUPS.filter(g => g.idx.length);
+      if(!GROUPS.length){ closeGroups(); return; }
+      renderGroups();
+    };
+  });
+  // kéo–thả giữa các nhóm
+  box.querySelectorAll(".gitem").forEach(el => {
+    el.ondragstart = e => { e.dataTransfer.setData("text/plain", el.dataset.img); el.classList.add("drag"); };
+    el.ondragend = () => el.classList.remove("drag");
+  });
+  box.querySelectorAll("[data-gdrop]").forEach(zone => {
+    zone.ondragover = e => { e.preventDefault(); zone.classList.add("hot"); };
+    zone.ondragleave = () => zone.classList.remove("hot");
+    zone.ondrop = e => {
+      e.preventDefault();
+      zone.classList.remove("hot");
+      const i = Number(e.dataTransfer.getData("text/plain"));
+      if(Number.isNaN(i)) return;
+      moveImageToGroup(i, Number(zone.dataset.gdrop));
+    };
+  });
+}
+
+/* Chuyển 1 ảnh sang nhóm khác (nhóm nguồn rỗng thì bỏ). */
+function moveImageToGroup(imgIdx, toGroup){
+  GROUPS.forEach(g => { g.idx = g.idx.filter(x => x !== imgIdx); });
+  if(GROUPS[toGroup]) GROUPS[toGroup].idx.push(imgIdx);
+  GROUPS = GROUPS.filter(g => g.idx.length);
+  if(!GROUPS.length){ closeGroups(); return; }
+  renderGroups();
+}
+
+/* Nhận dạng theo từng nhóm, gộp kết quả lại. */
+async function recognizeGroups(){
+  const key = ($("key").value || "").trim();
+  if(!key && !ENV_KEY){
+    setAiStatus("Chưa có API key Gemini. Dán key ở ô phía trên, hoặc chạy server với <code>GEMINI_API_KEY</code>.", "warn");
+    return;
+  }
+  const total = GROUPS.reduce((n, g) => n + g.idx.length, 0);
+  if(!total){ setAiStatus("Chưa có ảnh trong nhóm nào.", "warn"); return; }
+
+  const btn = $("btnRecognize");
+  btn.disabled = true;
+  const results = [];              // kết quả thô của từng nhóm, gộp ở cuối
+  const problems = [];
+  let done = 0;
+  try{
+    for(let gi = 0; gi < GROUPS.length; gi++){
+      const g = GROUPS[gi];
+      setAiStatus(`<span class="spin"></span> Đang đọc nhóm ${gi + 1}/${GROUPS.length} ` +
+                  `(${g.idx.length} ảnh)…`, "info");
+      const fd = new FormData();
+      g.idx.forEach(i => { fd.append("images", IMAGES[i].file, IMAGES[i].file.name || `anh${i}.jpg`);
+                           IMAGES[i].status = "đang đọc…"; });
+      fd.append("model", $("model").value || DEFAULT_MODEL);
+      if(g.form) fd.append("forms", g.form);
+      renderThumbs();
+      let d = {};
+      try{
+        const r = await fetch("/api/ai/recognize", {method:"POST", body: fd,
+                                                    headers: key ? {"X-Gemini-Key": key} : {}});
+        d = await r.json();
+      }catch(e){ d = {ok:false, error: e.message}; }
+
+      if(!d.ok){
+        problems.push(`Nhóm ${gi + 1}: ${d.error || "không đọc được"}`);
+        g.idx.forEach(i => { IMAGES[i].status = "lỗi"; });
+        continue;
+      }
+      g.idx.forEach(i => { IMAGES[i].status = "đã đọc"; });
+      results.push(d.data);
+      done++;
+      if(d.notes && d.notes.length) problems.push(`Nhóm ${gi + 1}: ${d.notes.join("; ")}`);
+      renderThumbs();
+    }
+    if(!done){
+      setAiStatus("<b>Không nhóm nào đọc được.</b><br>" + problems.map(esc).join("<br>"), "err");
+      return;
+    }
+    const m = await mergeGroups(results);
+    if(!m.ok){
+      setAiStatus(`<b>Đọc được ${done}/${GROUPS.length} nhóm nhưng gộp thất bại:</b> ` +
+                  esc(m.error || "lỗi không rõ"), "err");
+      return;
+    }
+    await loadData(m.data);
+    const merged_notes = m.notes || [];
+    setAiStatus(`Đã đọc <b>${done}/${GROUPS.length} nhóm</b>. ` +
+                `Mỗi nhóm đã thành một biên bản riêng — soát lại rồi bấm ` +
+                `<b>Xem trước &amp; sinh biên bản</b>.` +
+                (merged_notes.length ? `<br><b>Đã gộp:</b> ${merged_notes.map(esc).join("; ")}` : "") +
+                (problems.length ? `<br><b>Cần xem lại:</b> ${problems.map(esc).join("; ")}` : ""),
+                problems.length ? "warn" : "ok");
+    $("status").innerHTML = "";
+    setStep(2);
+  } finally {
+    btn.disabled = false; btn.innerHTML = "✨ Nhận dạng ảnh → điền form";
+  }
+}
+
+/* Gộp kết quả nhiều nhóm qua server: cùng một mẫu → nối bảng thiết bị,
+   thông tin chung chỉ bổ sung ô trống, không ghi đè. */
+async function mergeGroups(results){
+  try{
+    const r = await fetch("/api/merge", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({results})});
+    const d = await r.json();
+    if(d.ok) return d;
+    return {ok:false, error: d.error || "Gộp không thành công"};
+  }catch(e){
+    // mất kết nối: gộp tối thiểu ngay trên máy để không mất dữ liệu
+    const out = {thong_tin_chung: {}};
+    results.forEach(res => {
+      out.thong_tin_chung = Object.assign({}, res.thong_tin_chung, out.thong_tin_chung);
+      Object.keys(res).forEach(k => {
+        if(k === "thong_tin_chung" || k === "_ai") return;
+        out[k] = out[k] ? Object.assign({}, res[k], out[k]) : res[k];
+      });
+    });
+    return {ok:true, data: out, notes: ["Gộp tạm trên máy (mất kết nối máy chủ)"]};
+  }
+}
 
 /* ---------------- Gemini ---------------- */
 const KEY_STORE = "bienban.gemini.key";
@@ -1013,7 +1250,9 @@ document.addEventListener("keydown", e => {
   if(e.key === "Escape") $("modal").classList.remove("on");
 });
 
+$("btnGroup").onclick = () => { if(groupsEnabled()) closeGroups(); else openGroups(); };
 $("btnRecognize").onclick = async () => {
+  if(groupsEnabled() && GROUPS.length) return recognizeGroups();
   if(!IMAGES.length){ setAiStatus("Chưa chọn ảnh nào.", "warn"); return; }
   const key = ($("key").value || "").trim();
   if(!key && !ENV_KEY){

@@ -25,6 +25,8 @@ Quy ước ``type``:
 
 from __future__ import annotations
 
+import json
+
 from .spec import TEMPLATES, TITLES
 
 # --------------------------------------------------------------------------- #
@@ -374,3 +376,123 @@ def web_schema() -> dict:
             for form in sorted(FORM_GROUPS)
         },
     }
+
+
+# --------------------------------------------------------------------------- #
+# Gộp nhiều lần đọc ảnh thành một bộ dữ liệu
+# --------------------------------------------------------------------------- #
+#: Những khoá chứa dãy số cố định (không phải bảng tự do)
+_SERIES_KEYS = ("ti_so_bien_ap", "r_cuon_day_1_chieu_ohm", "thu_dien_ap_tang_cao",
+                "ngan_mach", "khong_tai", "u_ac_tang_cao_kV", "r_cach_dien_Mohm",
+                "r_tiep_xuc_uohm")
+
+
+def _is_blank(v) -> bool:
+    return v in (None, "", [], {}) or (isinstance(v, str) and not v.strip())
+
+
+def _table_of_block(block: dict) -> tuple[str, list] | None:
+    """Tìm bảng trong một khối dữ liệu: ``rows`` hoặc ``rows.rows``."""
+    for key in ("rows", "table"):
+        val = block.get(key)
+        if isinstance(val, list):
+            return key, val
+        if isinstance(val, dict) and isinstance(val.get("rows"), list):
+            return key, val["rows"]
+    return None
+
+
+def _set_table(block: dict, key: str, rows: list) -> None:
+    if isinstance(block.get(key), dict):
+        block[key]["rows"] = rows
+    else:
+        block[key] = rows
+
+
+def _renumber(rows: list) -> list:
+    """Đánh lại STT 01, 02… cho bảng sau khi gộp."""
+    n = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if "stt" in row or len(rows) > 1:
+            n += 1
+            if "stt" in row:
+                row["stt"] = f"{n:02d}"
+    return rows
+
+
+def merge_results(results: list[dict]) -> tuple[dict, list[str]]:
+    """Gộp kết quả nhận dạng của nhiều nhóm ảnh thành **một** bộ dữ liệu.
+
+    Nghiệp vụ: mỗi mẫu (44–48) in ra **một** biên bản, và một biên bản có thể
+    liệt kê nhiều thiết bị trong bảng. Vì vậy khi hai nhóm ảnh cùng là mẫu 45:
+
+    * thông tin chung ``thong_tin_chung``: nhóm sau chỉ bổ sung ô còn trống,
+      không ghi đè ô nhóm trước đã đọc được;
+    * các ô đơn (số biên bản, ngày…): giữ giá trị đầu tiên đọc được;
+    * **bảng**: nối các dòng lại và đánh lại STT → nhiều thiết bị vẫn in đủ
+      trên một biên bản;
+    * dãy số cố định (``ti_so_bien_ap``…): giữ dãy đầu tiên, ghi chú phần bỏ.
+
+    Trả về ``(data, notes)`` – ``notes`` là các ghi chú tiếng Việt cho người dùng
+    biết đã gộp gì.
+    """
+    notes: list[str] = []
+    out: dict = {}
+    common: dict = {}
+    crew: dict = {}
+
+    for res in results:
+        if not isinstance(res, dict):
+            continue
+        tt = res.get("thong_tin_chung") or {}
+        if isinstance(tt, dict):
+            for k, v in tt.items():
+                if k == "can_bo_ky_ten" and isinstance(v, dict):
+                    for ck, cv in v.items():
+                        if _is_blank(crew.get(ck)) and not _is_blank(cv):
+                            crew[ck] = cv
+                elif _is_blank(common.get(k)) and not _is_blank(v):
+                    common[k] = v
+        for key, block in res.items():
+            if key in ("thong_tin_chung", "_ai") or not isinstance(block, dict):
+                continue
+            if key not in out:
+                out[key] = json.loads(json.dumps(block, ensure_ascii=False))
+                continue
+            # ---- đã có khối cùng mẫu: gộp ----
+            cur = out[key]
+            extra_rows: list = []
+            for field, value in block.items():
+                if _is_blank(value):
+                    continue
+                if field in ("rows", "table"):
+                    continue
+                if field in _SERIES_KEYS and not _is_blank(cur.get(field)):
+                    if value != cur.get(field):
+                        notes.append(
+                            f"{key}: giữ dãy số của nhóm đầu, bỏ dãy trùng ở nhóm sau")
+                    continue
+                if _is_blank(cur.get(field)):
+                    cur[field] = value
+            tbl = _table_of_block(block)
+            if tbl:
+                extra_rows = [r for r in tbl[1] if isinstance(r, dict)]
+            if extra_rows:
+                cur_tbl = _table_of_block(cur)
+                if cur_tbl:
+                    _set_table(cur, cur_tbl[0], _renumber(list(cur_tbl[1]) + extra_rows))
+                else:
+                    _set_table(cur, tbl[0], _renumber(extra_rows))
+                notes.append(
+                    f"{key}: gộp thêm {len(extra_rows)} dòng thiết bị "
+                    f"(tổng {len(_table_of_block(cur)[1])} dòng)")
+
+    if crew:
+        common["can_bo_ky_ten"] = crew
+    data: dict = {}
+    if common:
+        data["thong_tin_chung"] = common
+    data.update(out)
+    return data, notes

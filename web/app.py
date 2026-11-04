@@ -35,7 +35,7 @@ from bienban import vision                               # noqa: E402
 from bienban.fill import load_config, render_all          # noqa: E402
 from bienban.preview import PAGE_CSS, docx_to_html        # noqa: E402
 from bienban import checks  # noqa: E402
-from bienban.schema import web_schema                     # noqa: E402
+from bienban.schema import merge_results, web_schema      # noqa: E402
 from bienban.spec import DATA_KEYS, TEMPLATES, TITLES     # noqa: E402
 from bienban.validate import validate                     # noqa: E402
 
@@ -260,6 +260,25 @@ def api_check():
         "counts": {"rule": sum(1 for c in out if c["source"] == "rule"),
                    "ai": sum(1 for c in out if c["source"] == "ai")},
     })
+
+
+@app.post("/api/merge")
+def api_merge():
+    """Gộp kết quả nhận dạng của nhiều nhóm ảnh → một bộ biên bản.
+
+    Body: ``{"results": [ {...}, {...} ]}`` (mỗi phần tử là ``data`` của một
+    lần gọi ``/api/ai/recognize``). Trả về dữ liệu đã gộp + ghi chú gộp.
+    """
+    body = request.get_json(silent=True) or {}
+    results = body.get("results")
+    if not isinstance(results, list) or not results:
+        return jsonify({"ok": False, "error": "Thiếu danh sách kết quả để gộp"}), 400
+    data, notes = merge_results(results)
+    if not any(k in data for k in DATA_KEYS.values()):
+        return jsonify({"ok": False, "error": "Không có biên bản nào trong dữ liệu gộp"}), 422
+    return jsonify({"ok": True, "data": data, "notes": notes,
+                    "blocks": [k for k in DATA_KEYS.values() if k in data],
+                    "problems": _problems_json(validate(data))})
 
 
 @app.post("/api/ai/recognize")

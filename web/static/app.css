@@ -357,3 +357,26 @@ body.lb-open{overflow:hidden}
 .lb-tools button:hover{background:rgba(255,255,255,.24)}
 .lb-name{color:#fff;opacity:.6;font-size:12px;margin-left:auto;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;max-width:40%}
+
+/* ---- chia nhóm thủ công ---- */
+.groups{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.groups[hidden]{display:none}
+.gintro{font-size:12.5px;color:#5b5f6b;background:#f5f6fa;border:1px solid #e3e6ef;
+  border-radius:9px;padding:8px 11px}
+.gcard{border:1px dashed #c9cee0;border-radius:11px;background:#fdfdff;padding:9px 10px}
+.gcard .ghead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gcard .ghead b{font-size:13px;color:var(--navy,#241a63)}
+.gcard .gcount{font-size:11.5px;background:#eceafb;color:#3a2f8a;border-radius:999px;padding:2px 8px}
+.gcard .ghead select{margin-left:auto;font-size:12px;padding:4px 6px;max-width:230px}
+.gdrop{display:flex;gap:7px;flex-wrap:wrap;min-height:74px;margin-top:8px;padding:8px;
+  border-radius:9px;background:#fff;border:1px solid #eceef5;transition:background .15s,border-color .15s}
+.gdrop.hot{background:#eef4ff;border-color:#8fb4ff}
+.gdrop .gnone{font-size:12px;color:#9aa0b4;align-self:center}
+.gitem{position:relative;width:74px;cursor:grab}
+.gitem.drag{opacity:.45}
+.gitem img{width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid #dfe3ee;display:block}
+.gitem .n{position:absolute;left:4px;top:4px;background:rgba(20,16,60,.75);color:#fff;font-size:10.5px;
+  padding:1px 5px;border-radius:6px}
+.gitem .grm{position:absolute;right:3px;top:3px;width:18px;height:18px;border:0;border-radius:50%;
+  background:rgba(216,31,38,.9);color:#fff;font-size:11px;line-height:1;cursor:pointer;padding:0}
+.gcard .gfoot{display:flex;gap:8px;margin-top:8px}
