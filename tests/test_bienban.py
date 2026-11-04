@@ -836,8 +836,13 @@ class TestUI:
         from bienban.schema import fields_of, tables_of
         from bienban.spec import LABELS
 
+        from bienban.schema import COMMON_GROUP
+
+        # Chỉ danh của 45/46/47 nằm ở khối "Thông tin công trình" (đúng vị trí in)
+        common_chipped = {f["key"] for f in COMMON_GROUP["fields"]}
         for form, items in LABELS.items():
-            have = {f["key"] for f in fields_of(form)}
+            have = {f["key"] for f in fields_of(form)} | (common_chipped - {"so_bien_ban",
+                                                                          "ngay_lap_bien_ban"})
             tables = {t["key"] for _, t in tables_of(form)}
             for it in items:
                 if it.get("label"):
@@ -873,6 +878,920 @@ class TestUI:
                              "la": "rows", "fco": "rows", "earth": "rows"}
                     key = alias.get(it["table"], it["table"])
                     assert key in tables, (form, it["table"])
+
+
+
+# --------------------------------------------------------------------------- #
+# Thứ tự ô trên form phải trùng thứ tự in trong file Word
+# --------------------------------------------------------------------------- #
+class TestFormOrder:
+    """So nhãn của form với vị trí thật của chúng trong .docx.
+
+    Không dùng danh sách nhãn chép tay: quét đúng các ``<w:p>`` của mẫu, ghi
+    lại thứ tự xuất hiện, rồi so với :func:`bienban.schema.print_order`.
+    """
+
+    #: nhãn có cách viết khác giữa form và bản in
+    ALIASES = {
+        "Số biên bản": r"\bSỐ\s*:",
+        "Ngày lập biên bản": r"\bNGÀY\s*:",
+        "Kết luận": r"\bKẾT LUẬN\s*:",
+        "Thiết bị đo": r"THIẾT BỊ THỬ NGHIỆM\s*:",
+    }
+
+    def _word_order(self, form: str) -> list[str]:
+        import re
+
+        from docx.oxml.ns import qn
+
+        from bienban.ooxml import para_text
+        from bienban.schema import print_order
+        from bienban.spec import TEMPLATES
+
+        doc = docx.Document(str(ROOT / "templates" / TEMPLATES[form]))
+        labels = [l for l in print_order(form)
+                  if not l.startswith("[bảng]") and not l.endswith("(ký tên)")]
+        found: list[str] = []
+        for p in doc.element.body.iter(qn("w:p")):
+            text = para_text(p)
+            if not text:
+                continue
+            here = []
+            for lab in labels:
+                pat = self.ALIASES.get(lab) or (re.escape(lab) + r"\s*:")
+                m = re.search(pat, text, re.I if lab in self.ALIASES else 0)
+                if m:
+                    here.append((m.start(), lab))
+            found += [lab for _, lab in sorted(here)]
+        seen, out = set(), []
+        for lab in found:
+            if lab not in seen:
+                seen.add(lab)
+                out.append(lab)
+        return out
+
+    @pytest.mark.parametrize("form", ["44", "45", "46", "47", "48"])
+    def test_order_matches_word(self, form):
+        from bienban.schema import print_order
+
+        labels = [l for l in print_order(form)
+                  if not l.startswith("[bảng]") and not l.endswith("(ký tên)")]
+        word = self._word_order(form)
+        pos = {lab: i for i, lab in enumerate(labels)}
+        assert word, f"mẫu {form}: không quét được nhãn nào"
+        assert [pos[l] for l in word] == sorted(pos[l] for l in word), (
+            f"mẫu {form}: form xếp sai thứ tự so với bản in\n"
+            f"  Word: {word}\n  Form: {labels}")
+
+    def test_header_comes_first(self):
+        from bienban.schema import print_order
+
+        for form in ("44", "45", "46", "47", "48"):
+            assert print_order(form)[:2] == ["Số biên bản", "Ngày lập biên bản"]
+
+    def test_signature_block_last(self):
+        from bienban.schema import print_order
+
+        for form in ("44", "45", "46", "47", "48"):
+            assert print_order(form)[-1] == "P. Giám đốc (ký tên)"
+
+    def test_chi_danh_after_dia_chi(self):
+        from bienban.schema import print_order
+
+        for form in ("45", "46", "47"):
+            order = print_order(form)
+            i = order.index("Địa chỉ")
+            assert order[i + 1] == "Chỉ danh"
+            assert order[i + 2] == "Đơn vị yêu cầu"
+        assert "Chỉ danh" not in print_order("44")
+
+    def test_44_ly_lich_before_project(self):
+        from bienban.schema import print_order
+
+        order = print_order("44")
+        assert order.index("Hiệu máy") < order.index("Tên công trình")
+        assert order.index("Tần số") < order.index("Tên công trình")
+
+    def test_so_luong_just_before_table(self):
+        from bienban.schema import print_order
+
+        for form in ("45", "46", "47"):
+            order = print_order(form)
+            i = order.index("Số lượng")
+            assert order[i - 1] == "Kiểm tra bên ngoài"
+            assert order[i + 1].startswith("[bảng]")
+
+    def test_no_duplicate_labels(self):
+        from bienban.schema import print_order
+
+        for form in ("44", "45", "46", "47", "48"):
+            order = print_order(form)
+            assert len(order) == len(set(order)), f"mẫu {form} có nhãn trùng"
+
+    def test_block_fields_carry_scope_prefix(self):
+        """Ô riêng phải có tiền tố __block để web ghi đúng biên bản."""
+        from bienban.schema import web_groups
+
+        for form in ("44", "45", "48"):
+            for g in web_groups(form):
+                for f in g.get("fields", []):
+                    if f["key"] in ("so_bien_ban", "ngay_lap_bien_ban"):
+                        continue
+                    if f["key"] in ("ten_cong_trinh", "dia_chi", "don_vi_yeu_cau",
+                                    "ly_do_kiem_dinh", "noi_kiem_dinh", "ngay_kiem_dinh",
+                                    "nguoi_thu", "nguoi_kiem_tra", "p_giam_doc"):
+                        continue
+                    assert f["path"][:2] == ["__block", form], (form, f["key"], f["path"])
+
+
+# --------------------------------------------------------------------------- #
+# Quy ước dòng trống
+# --------------------------------------------------------------------------- #
+class TestBlankRows:
+    @pytest.fixture()
+    def block45(self, data):
+        b = json.loads(json.dumps(data))["bien_ban_45_mccb"]
+        b["so_luong"] = "05"
+        b["rows"] = [
+            {"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "273",
+             "rtx_b": "275", "rtx_c": "279", "utest": "3", "dong_cat": "5",
+             "ket_qua": "Đạt", "so_tem": "017215"},
+            {"stt": "2", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "268",
+             "rtx_b": "", "rtx_c": "", "utest": "3", "dong_cat": "5",
+             "ket_qua": "Đạt", "so_tem": "017216"},
+            {"stt": "3", "rcd_close": "", "rcd_open": ""},          # trống hoàn toàn
+            {"stt": "4", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "270",
+             "rtx_b": "272", "rtx_c": "274", "utest": "3", "dong_cat": "5",
+             "ket_qua": "Đạt", "so_tem": "017217"},
+            {"stt": "5", "rcd_close": None, "rcd_open": "  "},      # trống hoàn toàn
+        ]
+        return b
+
+    def test_compact_removes_only_fully_blank_rows(self, block45):
+        from bienban.fill import compact_rows, table_spec
+
+        keep, removed = compact_rows(block45["rows"], table_spec("45", "rows"))
+        assert removed == 2 and len(keep) == 3
+        assert [r["so_tem"] for r in keep] == ["017215", "017216", "017217"]
+
+    def test_stt_renumbered_and_count(self, block45):
+        from bienban.fill import normalize_blank_rows
+
+        nb, log = normalize_blank_rows("45", block45)
+        assert [r["stt"] for r in nb["rows"]] == ["1", "2", "3"]
+        assert nb["so_luong"] == "03"
+        assert log and "5 → 3" in log[0]
+
+    def test_blank_cell_prints_dash(self, block45, tmp_path):
+        import docx
+        from docx.oxml.ns import qn
+
+        from bienban.fill import render_form
+        from bienban.ooxml import cell_text
+
+        from bienban.fill import load_config
+
+        data = {"thong_tin_chung": {"ten_cong_trinh": "X", "dia_chi": "Y",
+                                    "don_vi_yeu_cau": "Z", "ngay_lap_bien_ban": "04/11/2026",
+                                    "ngay_kiem_dinh": "01/11/2026"},
+                "bien_ban_45_mccb": block45}
+        path, _ = render_form("45", data, templates_dir=ROOT / "templates",
+                              out_dir=tmp_path, cfg=load_config())
+        doc = docx.Document(str(path))
+        tbl = [t for t in doc.tables
+               if "R tiếp xúc" in " ".join(cell_text(tc) for tc in t._tbl.iter(qn("w:tc")))][0]
+        rows = [[cell_text(c._tc) for c in r.cells] for r in tbl.rows][-3:]
+        assert len(rows) == 3                        # 2 dòng trống đã bị bỏ
+        assert rows[1][4] == "-" and rows[1][5] == "-"   # Pha B, Pha C
+        assert rows[2][-1] == "017217"
+
+    def test_fixed_table_untouched(self, data):
+        from bienban.fill import normalize_blank_rows
+
+        b = json.loads(json.dumps(data))
+        b["bien_ban_44_mba"]["r_cach_dien_Mohm"] = {"rows": [
+            {"key": "cao_vo_ha1", "r60": "2760", "r15": "2106", "knt": "1,31"},
+            {"key": "cao_vo_ha2", "r60": "", "r15": "", "knt": ""},
+            {"key": "ha1_ha2", "r60": "1790", "r15": "1376", "knt": "1,30"},
+        ]}
+        nb, _ = normalize_blank_rows("44", b["bien_ban_44_mba"])
+        assert len(nb["r_cach_dien_Mohm"]["rows"]) == 3
+
+    def test_list_form_count_follows_rows(self):
+        from bienban.fill import build_conclusion, load_config, normalize_blank_rows
+
+        b = {"so_luong": "07",
+             "rows": [{"stt": "1", "rcd_close": ">5000", "so_tem": "017215"},
+                      {"stt": "2"}, {"stt": "3"}]}
+        nb, _ = normalize_blank_rows("45", b)
+        assert len(nb["rows"]) == 1
+        assert "Một (01) máy cắt hạ thế" in build_conclusion("45", nb, {}, load_config())
+
+    def test_blank_detection(self):
+        from bienban.fill import _is_blank
+
+        for v in ("", "-", "–", "—", "   ", None):
+            assert _is_blank(v), v
+        for v in ("0", ">5000", "Đạt", "-1"):
+            assert not _is_blank(v), v
+
+
+# --------------------------------------------------------------------------- #
+# Soát số liệu sau khi AI đọc ảnh (checks.py)
+# --------------------------------------------------------------------------- #
+class TestChecks:
+    @pytest.fixture()
+    def normalized(self, data):
+        from bienban.vision import normalize_ai_result
+
+        d = normalize_ai_result(json.loads(json.dumps(data)))
+        d.pop("_ai", None)
+        return d
+
+    def test_clean_sample_has_no_warnings(self, normalized):
+        from bienban.checks import check_rules
+
+        assert check_rules(normalized) == []
+
+    def test_kht_mismatch_detected(self, normalized):
+        from bienban.checks import check_rules
+
+        normalized["bien_ban_44_mba"]["r_cach_dien_Mohm"] = {"rows": [
+            {"key": "cao_vo_ha1", "r60": "2760", "r15": "2106", "knt": "2,50"}]}
+        warns = check_rules(normalized)
+        assert any("Kht" in w.message for w in warns)
+        assert any(w.field == "knt" for w in warns)
+
+    def test_kht_missing_is_info(self, normalized):
+        from bienban.checks import check_rules
+
+        normalized["bien_ban_44_mba"]["r_cach_dien_Mohm"] = {"rows": [
+            {"key": "cao_vo_ha1", "r60": "2760", "r15": "2106", "knt": ""}]}
+        info = [w for w in check_rules(normalized) if w.level == "info" and "tự tính" in w.message]
+        assert info and "1,31" in info[0].message
+
+    def test_duplicate_row_detected(self, normalized):
+        from bienban.checks import check_rules
+
+        rows = normalized["bien_ban_45_mccb"]["rows"]["rows"]
+        normalized["bien_ban_45_mccb"]["rows"]["rows"] = [rows[0], dict(rows[0])]
+        assert any("giống hệt" in w.message for w in check_rules(normalized))
+
+    def test_missing_greater_than_sign(self, normalized):
+        from bienban.checks import check_rules
+
+        normalized["bien_ban_45_mccb"]["rows"]["rows"][0]["rcd_close"] = "5000"
+        assert any("'>5000'" in w.message for w in check_rules(normalized))
+
+    def test_series_jump_detected(self, normalized):
+        from bienban.checks import check_rules
+
+        normalized["bien_ban_44_mba"]["ti_so_bien_ap"]["ha_1"] = [
+            "57,98", "56,59", "55,21", "53,83", "20,00"]
+        assert any("lệch" in w.message for w in check_rules(normalized))
+
+    def test_count_mismatch_even_with_one_row(self, normalized):
+        from bienban.checks import check_rules
+
+        normalized["bien_ban_45_mccb"]["so_luong"] = "05"
+        assert any("Số lượng ghi 05" in w.message for w in check_rules(normalized))
+
+    def test_code_length_and_bad_date(self, normalized):
+        from bienban.checks import check_rules
+
+        normalized["bien_ban_44_mba"]["so_tem"] = "17246"
+        normalized["thong_tin_chung"]["ngay_kiem_dinh"] = "32/11/2026"
+        msgs = " ".join(w.message for w in check_rules(normalized))
+        assert "chỉ có 5 chữ số" in msgs
+        assert "dd/mm/yyyy" in msgs
+
+    def test_vietnamese_number_parsing(self):
+        from bienban.checks import _num
+
+        assert _num("3,52") == pytest.approx(3.52)
+        assert _num(">5000") == 5000
+        assert _num("1.234,5") == pytest.approx(1234.5)
+        assert _num("") is None and _num(None) is None
+
+    def test_warning_serialises(self):
+        from bienban.checks import Warning_
+
+        w = Warning_("warn", "a.b", "có thể sai", field="so_tem", form="44")
+        d = w.as_dict()
+        assert d["level"] == "warn" and d["source"] == "rule" and d["field"] == "so_tem"
+
+
+class TestCheckEndpoint:
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def test_check_endpoint_rules_only(self, client, data):
+        from bienban.vision import normalize_ai_result
+
+        d = normalize_ai_result(json.loads(json.dumps(data)))
+        d.pop("_ai", None)
+        body = client.post("/api/check", json=d).get_json()
+        assert body["ok"] is True and body["checks"] == []
+        assert body["counts"]["rule"] == 0
+
+    def test_check_endpoint_reports_problem(self, client, data):
+        from bienban.vision import normalize_ai_result
+
+        d = normalize_ai_result(json.loads(json.dumps(data)))
+        d.pop("_ai", None)
+        d["bien_ban_45_mccb"]["so_luong"] = "09"
+        body = client.post("/api/check", json=d).get_json()
+        assert any(c["source"] == "rule" for c in body["checks"])
+
+    def test_check_endpoint_ai_layer_optional(self, client, data, monkeypatch):
+        """?ai=1 dùng lại ảnh của lần nhận dạng gần nhất (không upload lại)."""
+        from bienban import vision
+        from web import app as webapp
+
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        webapp._LAST_IMAGES["blobs"] = [b"\xff\xd8\xff" + b"0" * 50]
+        seen = {}
+
+        def fake(url, *, data=None, method="GET", **kw):
+            seen["prompt"] = data["contents"][0]["parts"][0]["text"]
+            return {"candidates": [{"content": {"parts": [{"text": json.dumps(
+                {"checks": [{"where": "bien_ban_45_mccb.rows[0].rtx_a",
+                             "in_json": "273", "on_image": "278",
+                             "note": "chữ số cuối bị đọc nhầm"}]},
+                ensure_ascii=False)}]}}]}
+
+        monkeypatch.setattr(vision, "_request", fake)
+        body = client.post("/api/check?ai=1", json=data).get_json()
+        assert body["counts"]["ai"] == 1
+        ai = [c for c in body["checks"] if c["source"] == "ai"][0]
+        assert "278" in ai["message"] and ai["form"] == "45"
+        assert "SOÁT LẠI" in seen["prompt"]
+
+    def test_check_endpoint_ai_without_images(self, client, data, monkeypatch):
+        from web import app as webapp
+
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        webapp._LAST_IMAGES["blobs"] = []
+        body = client.post("/api/check?ai=1", json=data).get_json()
+        assert body["ok"] is True and body["counts"]["ai"] == 0
+
+    def test_recognize_returns_rule_checks(self, client, monkeypatch):
+        import io
+
+        from bienban import vision
+
+        payload = {
+            "thong_tin_chung": {"ten_cong_trinh": "X", "dia_chi": "Y",
+                                "don_vi_yeu_cau": "Z", "ly_do_kiem_dinh": "Sau sự cố",
+                                "noi_kiem_dinh": "Tại hiện trường", "ngay_kiem_dinh": "01/11/2026"},
+            "reports": [{"report_type": "48", "data": {
+                "so_bien_ban": "5048/BB-TC", "chi_danh": "Điện trở nối đất",
+                "ket_noi_trung_tinh": "Có", "loai_tiep_dat": "Làm việc",
+                "gia_tri_do_Ohm": "3,52", "thiet_bi_do": "KEW 4105DL"}}],
+        }
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        monkeypatch.setattr(vision, "_request", lambda *a, **k: {
+            "candidates": [{"content": {"parts": [{"text": json.dumps(payload, ensure_ascii=False)}]}}]})
+        files = {"images": (io.BytesIO(b"\xff\xd8\xff" + b"0" * 100), "a.jpg")}
+        body = client.post("/api/ai/recognize", data=files,
+                           content_type="multipart/form-data").get_json()
+        assert body["ok"] is True and "checks" in body
+        from web.app import _LAST_IMAGES
+        assert _LAST_IMAGES["blobs"]
+
+
+class TestAiFallback:
+    """Chuỗi AI dự phòng: model chính → model khác → key dự phòng (đều Gemini)."""
+
+    OK = {"candidates": [{"content": {"parts": [{"text": '{"ok": 1}'}]}}]}
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def calls(self, monkeypatch):
+        """Giả lập _request: ghi lại (model, key) và trả lỗi theo kịch bản."""
+        from bienban import vision
+
+        state = {"calls": [], "busy": {}, "fatal": set(), "busy_key": {}}
+
+        def fake(url, *, data=None, method="GET"):
+            model = url.split("/models/")[1].split(":")[0]
+            key = url.split("key=")[1]
+            state["calls"].append((model, key))
+            if model in state["fatal"]:
+                raise vision.GeminiFatal("ảnh hỏng")
+            # lỗi gắn với một cặp (model, key) cụ thể nếu có
+            if key in state["busy_key"]:
+                raise vision.GeminiBusy("bận", status=state["busy_key"][key])
+            if model in state["busy"]:
+                raise vision.GeminiBusy("bận", status=state["busy"][model])
+            return TestAiFallback.OK
+
+        monkeypatch.setattr(vision, "_request", fake)
+        return state
+
+    def test_main_model_works_no_fallback(self, calls):
+        from bienban.vision import call_gemini
+
+        out = call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                          fallbacks=["gemini-2.5-pro"])
+        assert out == {"ok": 1}
+        assert calls["calls"] == [("gemini-2.5-flash", "K1")]
+
+    @pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+    def test_busy_statuses_switch_model(self, calls, status):
+        from bienban.vision import call_gemini
+
+        calls["busy"]["gemini-2.5-flash"] = status
+        out = call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                          fallbacks=["gemini-2.5-pro"])
+        assert out == {"ok": 1}
+        assert [c[0] for c in calls["calls"]] == ["gemini-2.5-flash", "gemini-2.5-pro"]
+
+    def test_timeout_switches_model(self, calls):
+        from bienban import vision
+
+        state = calls
+
+        def fake(url, *, data=None, method="GET"):
+            model = url.split("/models/")[1].split(":")[0]
+            state["calls"].append((model, "K1"))
+            if model == "gemini-2.5-flash":
+                raise vision.GeminiBusy("timeout", status=408)
+            return TestAiFallback.OK
+
+        vision._request = fake
+        assert vision.call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                                  fallbacks=["gemini-2.5-pro"]) == {"ok": 1}
+
+    def test_backup_key_used_after_all_models_fail(self, calls):
+        from bienban.vision import call_gemini
+
+        calls["busy_key"]["K1"] = 429           # key chính hết hạn mức
+        out = call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                          fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
+        assert out == {"ok": 1}
+        # thử hết model với key chính, rồi mới sang key dự phòng
+        assert [c[1] for c in calls["calls"]] == ["K1", "K1", "K2"]
+        assert calls["calls"][-1] == ("gemini-2.5-flash", "K2")
+
+    def test_fatal_error_stops_immediately(self, calls):
+        from bienban.vision import GeminiFatal, call_gemini
+
+        calls["fatal"].add("gemini-2.5-flash")
+        with pytest.raises(GeminiFatal):
+            call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                        fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
+        assert len(calls["calls"]) == 1          # không tốn thêm lượt gọi
+
+    def test_all_fail_gives_clear_message(self, calls):
+        from bienban.vision import GeminiError, call_gemini
+
+        calls["busy_key"].update({"K1": 429, "K2": 503})
+        with pytest.raises(GeminiError) as exc:
+            call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                        fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
+        assert "phương án" in str(exc.value)
+
+    def test_on_try_reports_each_switch(self, calls):
+        from bienban.vision import call_gemini
+
+        calls["busy"]["gemini-2.5-flash"] = 503
+        seen = []
+        call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                    fallbacks=["gemini-2.5-pro"],
+                    on_try=lambda i, m, slot, exc: seen.append((i, m, slot)))
+        assert seen[0][1] == "gemini-2.5-flash" and seen[0][2] == "chính"
+
+    def test_duplicate_models_and_keys_not_retried(self, calls):
+        from bienban.vision import call_gemini
+
+        from bienban.vision import GeminiError
+
+        calls["busy"]["gemini-2.5-flash"] = 503
+        with pytest.raises(GeminiError):
+            call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                        fallbacks=["gemini-2.5-flash", "models/gemini-2.5-flash"],
+                        alt_keys=["K1"])
+        # 3 tên gọi cùng một model + 1 key trùng -> chỉ 1 lần gọi, không quay vòng
+        assert calls["calls"] == [("gemini-2.5-flash", "K1")], calls["calls"]
+
+    def test_defaults_from_config(self):
+        from bienban.fill import load_config
+
+        ai = load_config()["ai"]
+        assert ai["fallback_models"] and ai["fallback_models"][0] != "gemini-2.5-flash"
+
+    def test_recognize_reports_fallback(self, client, monkeypatch):
+        """Nếu phải chuyển phương án, phản hồi API nói rõ."""
+        import io
+
+        from bienban import vision
+
+        payload = {"thong_tin_chung": {"ten_cong_trinh": "X", "dia_chi": "Y", "don_vi_yeu_cau": "Z",
+                                       "ly_do_kiem_dinh": "Sau sự cố", "noi_kiem_dinh": "Tại hiện trường",
+                                       "ngay_kiem_dinh": "01/11/2026"},
+                   "reports": [{"report_type": "48", "data": {"so_bien_ban": "5048/BB-TC"}}]}
+
+        def fake(url, *, data=None, method="GET"):
+            model = url.split("/models/")[1].split(":")[0]
+            if model == "gemini-2.5-flash":
+                raise vision.GeminiBusy("quá tải", status=503)
+            return {"candidates": [{"content": {"parts": [
+                {"text": json.dumps(payload, ensure_ascii=False)}]}}]}
+
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        monkeypatch.setattr(vision, "_request", fake)
+        files = {"images": (io.BytesIO(b"\xff\xd8\xff" + b"0" * 80), "a.jpg")}
+        body = client.post("/api/ai/recognize", data=files,
+                           content_type="multipart/form-data").get_json()
+        assert body["ok"] is True
+        assert body["fallback"], body
+        assert "gemini-2.5-flash" in body["fallback"][0]
+
+
+class TestBatchGroups:
+    """Nhiều ảnh / nhiều nhóm: gộp kết quả nhận dạng thành một bộ biên bản."""
+
+    TT = {"ten_cong_trinh": "Trạm A", "dia_chi": "Tây Ninh",
+          "don_vi_yeu_cau": "E-GREEN", "ly_do_kiem_dinh": "Sau sự cố",
+          "noi_kiem_dinh": "Tại hiện trường", "ngay_kiem_dinh": "01/11/2026"}
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def test_two_groups_same_form_append_rows(self):
+        """Hai nhóm cùng mẫu 45 = hai đợt thiết bị → nối bảng, đánh lại STT."""
+        from bienban.schema import merge_results
+
+        a = {"thong_tin_chung": self.TT,
+             "bien_ban_45_mccb": {"so_bien_ban": "5045/BB-TC", "hieu": "MITSUBISHI",
+                                  "rows": [{"stt": "1", "utest": "3", "so_tem": "017215"}]}}
+        b = {"thong_tin_chung": {"dia_chi": "Bình Dương"},
+             "bien_ban_45_mccb": {"so_bien_ban": "9999/BB-TC", "hieu": "ABB",
+                                  "rows": [{"stt": "1", "utest": "5", "so_tem": "777"}]}}
+        data, notes = merge_results([a, b])
+        rows = data["bien_ban_45_mccb"]["rows"]
+        assert len(rows) == 2
+        assert [r["stt"] for r in rows] == ["01", "02"]
+        assert [r["so_tem"] for r in rows] == ["017215", "777"]
+        # ô đơn: giữ giá trị nhóm đầu, không bị nhóm sau ghi đè
+        assert data["bien_ban_45_mccb"]["so_bien_ban"] == "5045/BB-TC"
+        assert data["bien_ban_45_mccb"]["hieu"] == "MITSUBISHI"
+        # thông tin chung: chỉ bổ sung ô trống
+        assert data["thong_tin_chung"]["dia_chi"] == "Tây Ninh"
+        assert data["thong_tin_chung"]["ten_cong_trinh"] == "Trạm A"
+        assert any("gộp thêm 1 dòng" in n for n in notes)
+
+    def test_common_filled_when_first_group_blank(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([
+            {"thong_tin_chung": {"ten_cong_trinh": "Trạm A"}, "bien_ban_48_tiep_dat": {}},
+            {"thong_tin_chung": {"dia_chi": "Tây Ninh", "ten_cong_trinh": "Trạm B"},
+             "bien_ban_48_tiep_dat": {"gia_tri_do_Ohm": "3,52"}},
+        ])
+        tt = data["thong_tin_chung"]
+        assert tt["dia_chi"] == "Tây Ninh"        # ô trống -> lấy nhóm sau
+        assert tt["ten_cong_trinh"] == "Trạm A"   # đã có -> giữ nhóm đầu
+
+    def test_crew_names_merged_field_by_field(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([
+            {"thong_tin_chung": {"can_bo_ky_ten": {"nguoi_thu": "Quân"}}, "bien_ban_44_mba": {}},
+            {"thong_tin_chung": {"can_bo_ky_ten": {"nguoi_kiem_tra": "Nghĩa",
+                                                   "nguoi_thu": "Khác"}}, "bien_ban_44_mba": {}},
+        ])
+        crew = data["thong_tin_chung"]["can_bo_ky_ten"]
+        assert crew["nguoi_thu"] == "Quân"
+        assert crew["nguoi_kiem_tra"] == "Nghĩa"
+
+    def test_different_forms_side_by_side(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([
+            {"thong_tin_chung": self.TT, "bien_ban_45_mccb": {"so_luong": "01"}},
+            {"thong_tin_chung": self.TT, "bien_ban_46_la": {"so_luong": "02"}},
+        ])
+        assert data["bien_ban_45_mccb"]["so_luong"] == "01"
+        assert data["bien_ban_46_la"]["so_luong"] == "02"
+
+    def test_series_not_appended(self):
+        """Dãy số cố định (5 nấc) không nối thêm — giữ dãy nhóm đầu + ghi chú."""
+        from bienban.schema import merge_results
+
+        a = {"bien_ban_44_mba": {"ti_so_bien_ap": {"ha_1": ["1", "2"]}}}
+        b = {"bien_ban_44_mba": {"ti_so_bien_ap": {"ha_1": ["9", "9"]}}}
+        data, notes = merge_results([a, b])
+        assert data["bien_ban_44_mba"]["ti_so_bien_ap"]["ha_1"] == ["1", "2"]
+        assert any("dãy số" in n for n in notes)
+
+    def test_nested_table_rows_dict_form(self):
+        """Bảng ở dạng ``rows: {rows: [...]}`` cũng nối được."""
+        from bienban.schema import merge_results
+
+        a = {"bien_ban_47_fco": {"rows": {"rows": [{"stt": "1", "thiet_bi": "FCO 01"}]}}}
+        b = {"bien_ban_47_fco": {"rows": {"rows": [{"stt": "1", "thiet_bi": "FCO 02"}]}}}
+        data, _ = merge_results([a, b])
+        rows = data["bien_ban_47_fco"]["rows"]["rows"]
+        assert [r["thiet_bi"] for r in rows] == ["FCO 01", "FCO 02"]
+        assert [r["stt"] for r in rows] == ["01", "02"]
+
+    def test_single_group_unchanged(self):
+        from bienban.schema import merge_results
+
+        only = {"thong_tin_chung": self.TT, "bien_ban_48_tiep_dat": {"gia_tri_do_Ohm": "3,52"}}
+        data, notes = merge_results([only])
+        assert data == only
+        assert notes == []
+
+    def test_ignores_meta_key(self):
+        from bienban.schema import merge_results
+
+        data, _ = merge_results([{"bien_ban_48_tiep_dat": {"x": "1"}, "_ai": {"notes": ["a"]}}])
+        assert "_ai" not in data
+
+    # ---- API ----
+    def test_api_merge_ok(self, client):
+        body = client.post("/api/merge", json={"results": [
+            {"thong_tin_chung": self.TT,
+             "bien_ban_46_la": {"so_luong": "01", "rows": {"rows": [{"stt": "1"}]}}},
+            {"thong_tin_chung": self.TT,
+             "bien_ban_46_la": {"so_luong": "09", "rows": {"rows": [{"stt": "1"}]}}},
+        ]}).get_json()
+        assert body["ok"] is True
+        assert body["blocks"] == ["bien_ban_46_la"]
+        assert len(body["data"]["bien_ban_46_la"]["rows"]["rows"]) == 2
+        assert body["data"]["bien_ban_46_la"]["so_luong"] == "01"
+        assert body["notes"]
+
+    def test_api_merge_needs_results(self, client):
+        r = client.post("/api/merge", json={"results": []})
+        assert r.status_code == 400
+        r2 = client.post("/api/merge", json={})
+        assert r2.status_code == 400
+
+    def test_api_merge_rejects_garbage(self, client):
+        r = client.post("/api/merge", json={"results": [{"foo": "bar"}]})
+        assert r.status_code == 422
+
+    def test_api_merge_output_renders(self, client, tmp_path):
+        """Dữ liệu gộp phải sinh được biên bản thật."""
+        from bienban.fill import render_all
+        from bienban.schema import merge_results
+        from bienban.spec import TEMPLATES
+
+        rows_a = [{"stt": "1", "utest": "3", "so_tem": "017215", "ket_qua": "Đạt",
+                   "rcd_close": ">5000", "rcd_open": ">5000",
+                   "rtx_a": "273", "rtx_b": "275", "rtx_c": "279", "dong_cat": "5"}]
+        rows_b = [{"stt": "1", "utest": "5", "so_tem": "017299", "ket_qua": "Đạt",
+                   "rcd_close": ">5000", "rcd_open": ">5000",
+                   "rtx_a": "280", "rtx_b": "281", "rtx_c": "282", "dong_cat": "5"}]
+        block = {"so_bien_ban": "5045/BB-TC", "hieu": "MITSUBISHI", "kieu": "NF-250",
+                 "loai": "MCCB", "so_luong": "02", "so_cuc": "03", "u_test_kV": "3",
+                 "dong_dinh_muc": "250A", "dien_ap_dinh_muc": "400V",
+                 "chi_danh": "MCCB 250A", "ket_qua": "Đạt"}
+        data, _ = merge_results([
+            {"thong_tin_chung": self.TT, "bien_ban_45_mccb": dict(block, rows=rows_a)},
+            {"thong_tin_chung": self.TT, "bien_ban_45_mccb": dict(block, rows=rows_b)},
+        ])
+        assert len(data["bien_ban_45_mccb"]["rows"]) == 2
+        paths, warnings = render_all(data, templates_dir=ROOT / "templates",
+                                     out_dir=tmp_path, forms=["45"])
+        assert len(paths) == 1 and paths[0].exists() and paths[0].stat().st_size > 50_000
+        assert not [w for w in warnings if "lỗi" in w.lower()]
+
+
+class TestWatermark:
+    """Hình nền chính thống: logo công ty làm dấu chìm trong mọi biên bản."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def test_finds_the_real_logo_not_the_signature(self):
+        """Ba ảnh trong mẫu: logo nhỏ, chữ ký, logo lớn — phải chọn logo lớn."""
+        import io
+
+        import docx
+        from PIL import Image
+
+        from bienban.watermark import find_logo
+
+        doc = docx.Document(str(ROOT / "templates" / "45 MCCB 250A.docx"))
+        blob = find_logo(doc)
+        assert blob, "không tìm thấy logo"
+        w, h = Image.open(io.BytesIO(blob)).size
+        assert w > 300 and h > 300, (w, h)          # logo lớn 1227×1091
+        # có cả đỏ lẫn xanh navy => đúng logo, không phải chữ ký
+        im = Image.open(io.BytesIO(blob)).convert("RGB")
+        im.thumbnail((64, 64))
+        getter = getattr(im, "get_flattened_data", None) or im.getdata
+        px = list(getter())
+        red = sum(1 for r, g, b in px if r > 140 and g < 110 and b < 110)
+        navy = sum(1 for r, g, b in px if b > 60 and b > r + 25 and g < b)
+        assert red > 20 and navy > 20, (red, navy)
+
+    def test_signature_is_rejected(self):
+        """Ảnh chữ ký (chỉ một màu mực) không được dùng làm hình nền."""
+        from bienban.watermark import _logo_score
+
+        from PIL import Image
+
+        # chữ ký điện thoại thật trong mẫu 46
+        import zipfile
+
+        z = zipfile.ZipFile(str(ROOT / "templates" / "46 BB LA.docx"))
+        name = [n for n in z.namelist() if n.endswith(".png")][0]
+        import io
+
+        im = Image.open(io.BytesIO(z.read(name)))
+        assert _logo_score(im) == 0.0
+
+    def test_watermark_added_to_every_template(self, tmp_path):
+        import io
+        import json
+        import zipfile
+
+        import docx
+
+        from bienban.fill import load_config, render_form
+
+        data = json.loads((ROOT / "samples" / "e-green-01112026.json").read_text(encoding="utf-8"))
+        cfg = load_config()
+        cfg["watermark"] = {"enabled": True, "opacity": 0.06, "scale": 0.62}
+        for form in ("44", "45", "46", "47", "48"):
+            path, warn = render_form(form, data, templates_dir=ROOT / "templates",
+                                     out_dir=tmp_path, cfg=cfg, log=lambda s: None)
+            z = zipfile.ZipFile(str(path))
+            headers = [n for n in z.namelist()
+                       if n.startswith("word/header") and n.endswith(".xml")]
+            xml = "".join(z.read(h).decode() for h in headers)
+            assert "Logo chìm" in xml, form
+            assert 'behindDoc="1"' in xml, form            # nằm dưới chữ
+            assert "alphaModFix" in xml, form               # có độ trong suốt
+            assert not any("logo" in w.lower() for w in warn), warn
+            # mở lại được bằng python-docx (file không hỏng)
+            docx.Document(io.BytesIO(z.read("word/document.xml")) if False else str(path))
+
+    def test_can_be_turned_off(self, tmp_path):
+        import json
+        import zipfile
+
+        from bienban.fill import load_config, render_form
+
+        data = json.loads((ROOT / "samples" / "e-green-01112026.json").read_text(encoding="utf-8"))
+        cfg = load_config()
+        cfg["watermark"] = {"enabled": False}
+        path, _ = render_form("45", data, templates_dir=ROOT / "templates",
+                              out_dir=tmp_path, cfg=cfg, log=lambda s: None)
+        z = zipfile.ZipFile(str(path))
+        xml = "".join(z.read(n).decode() for n in z.namelist()
+                      if n.startswith("word/header") and n.endswith(".xml"))
+        assert "Logo chìm" not in xml
+
+    def test_web_preview_has_watermark_css(self, client):
+        page = client.get("/").get_data(as_text=True)
+        assert ".page-wm::before" in page
+        assert "background-image:url(data:image/" in page
+
+    def test_config_example_documents_watermark(self):
+        import json
+
+        cfg = json.loads((ROOT / "config.example.json").read_text(encoding="utf-8"))
+        assert cfg["watermark"]["enabled"] is True
+        assert 0 < cfg["watermark"]["opacity"] <= 0.2
+
+
+class TestImageReview:
+    """Giữ ảnh qua F5 (IndexedDB) + lightbox xem lại ảnh đã tải."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def page(self, client):
+        return client.get("/").get_data(as_text=True)
+
+    def test_lightbox_container_and_hooks(self, page):
+        assert 'id="lightbox"' in page
+        for hook in ("function lightboxOpen", "function lightboxClose",
+                     "function drawLightbox", "data-lb-zoom-in", "data-lb-rot",
+                     "data-lb-prev", "data-lb-next"):
+            assert hook in page, hook
+
+    def test_images_persist_across_reload(self, page):
+        # IndexedDB, không phải localStorage: ảnh chụp điện thoại vài MB vẫn lưu được
+        assert 'indexedDB.open' in page
+        for fn in ("idbPut", "idbAll", "idbDelete", "idbClear", "restoreImages"):
+            assert f"function {fn}" in page or f"async function {fn}" in page, fn
+        assert "restoreImages()" in page.split("khởi động")[-1]
+
+    def test_thumb_opens_lightbox(self, page):
+        assert 'data-view="${i}"' in page
+        assert 'data-view=' in page and "lightboxOpen(Number(b.dataset.view))" in page
+
+    def test_image_label_points_to_form(self, page):
+        """Ảnh phải ghi rõ thuộc biên bản nào: “ảnh 3 → biên bản 45”."""
+        assert "function imageFormLabel" in page
+        assert "biên bản " in page
+
+    def test_keyboard_shortcuts_in_lightbox(self, page):
+        tail = page.split("khởi động")[-1]
+        for key in ("Escape", "ArrowLeft", "ArrowRight"):
+            assert key in tail, key
+
+    def test_rotation_and_zoom_steps(self, page):
+        assert "VIEW.rot = (VIEW.rot + 90) % 360" in page
+        assert "Math.min(6, VIEW.zoom * 1.25)" in page
+
+    def test_css_for_lightbox(self, client):
+        css = client.get("/static/app.css").get_data(as_text=True)
+        for sel in (".lightbox", ".lb-stage", ".lb-nav", ".lb-tools", ".thumb .view"):
+            assert sel in css, sel
+
+    def test_delete_removes_from_store(self, page):
+        assert "idbDelete(im.dbId)" in page
+        assert "idbClear()" in page
+
+
+class TestFreeTextSelects:
+    """Mọi dropdown (ô đơn + ô trong bảng) phải cho nhập giá trị ngoài danh sách."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def _selects(self):
+        from bienban.schema import web_groups
+
+        for form in ("44", "45", "46", "47", "48"):
+            for g in web_groups(form):
+                for f in g.get("fields", []):
+                    if f.get("type") == "select":
+                        yield form, g["title"], f
+                t = g.get("table")
+                for c in (t or {}).get("columns", []):
+                    if c.get("type") == "select":
+                        yield form, g["title"], c
+
+    def test_page_has_other_option(self, client):
+        page = client.get("/").get_data(as_text=True)
+        assert 'data-other="1"' in page and "✎ Khác…" in page
+        assert "data-other-of" in page and "function bindSelect" in page
+
+    def test_select_options_are_plain_strings(self):
+        seen = 0
+        for form, title, f in self._selects():
+            seen += 1
+            for opt in f.get("options") or []:
+                assert isinstance(opt, str) and opt and not opt.startswith("__"), (form, title)
+        assert seen >= 8, seen
+
+    def test_no_reserved_sentinel_in_page(self, client):
+        assert "__khac__" not in client.get("/").get_data(as_text=True)
 
 
 # --------------------------------------------------------------------------- #

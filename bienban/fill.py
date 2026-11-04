@@ -34,6 +34,7 @@ from .normalize import (
 )
 from .ooxml import cell_text, para_text, set_cell_text, set_para_text
 from .schema import FORM_GROUPS
+from .watermark import apply_watermark
 from .spec import (DATA_KEYS, DOC_KIND, LABELS, TABLE_HEADER_ROWS,
                    TABLE_PROBES, TEMPLATES, TITLES)
 
@@ -70,6 +71,11 @@ DEFAULT_CONFIG = {
     },
     "conclusions": {
         "default_template": "{qty} {device} trên đạt yêu cầu đóng điện vận hành",
+    },
+    # Chuỗi AI dự phòng: model chính -> model khác -> key dự phòng (đều của Gemini)
+    "ai": {
+        "fallback_models": ["gemini-2.5-pro", "gemini-2.0-flash"],
+        "fallback_keys": [],          # có thể điền key thứ hai từ config.json
     },
 }
 
@@ -230,6 +236,81 @@ def _put_force(tc, text, bold=None):
 _NUMBER_TYPES = {"number", "code"}
 
 
+BLANK_ROW_DOC = """
+Quy ước dòng trống (theo yêu cầu của công ty)
+--------------------------------------------
+* Ô **để trống trong một dòng có số liệu khác** → in ``-`` (thói quen ghi
+  biên bản giấy).
+* Dòng **trống ở mọi ô** → bị xoá hẳn; dòng phía dưới dồn lên, số thứ tự đánh
+  lại, và ``so_luong`` (nếu mẫu có ô này) tự giảm theo số dòng thật.
+"""
+
+
+def _is_blank(value) -> bool:
+    if value is None:
+        return True
+    return str(value).strip() in ("", "-", "–", "—")
+
+
+def compact_rows(rows: list[dict], table: dict) -> tuple[list[dict], int]:
+    """Bỏ dòng trống hoàn toàn + đánh lại ``stt``. Trả về ``(dòng, số đã bỏ)``."""
+    cols = [c["key"] for c in table.get("columns", [])]
+    keep: list[dict] = []
+    removed = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            removed += 1
+            continue
+        if cols and all(_is_blank(row.get(c)) for c in cols):
+            removed += 1
+            continue
+        row = dict(row)
+        if table.get("stt"):
+            row["stt"] = str(len(keep) + 1)
+        keep.append(row)
+    return keep, removed
+
+
+def apply_blank_rule(block: dict, table: dict) -> tuple[int, int]:
+    """Chuẩn hoá 1 bảng trong ``block``: xoá dòng trống + cập nhật ``so_luong``."""
+    key = table.get("key") or "rows"
+    src = block.get(key)
+    rows = src.get("rows") if isinstance(src, dict) else src
+    if not isinstance(rows, list) or not rows:
+        return 0, 0
+    keep, removed = compact_rows(rows, table)
+    flat = isinstance(src, list)
+    if isinstance(src, dict):
+        src["rows"] = keep
+    else:
+        block[key] = keep
+    if flat:
+        block["_rows_flat"] = True       # dữ liệu dạng list (JSON cũ): số lượng = số dòng
+    if (table.get("sync_so_luong") or removed) and keep:
+        block["so_luong"] = f"{len(keep):02d}"
+    return len(keep), removed
+
+
+def normalize_blank_rows(form: str, block: dict) -> tuple[dict, list[str]]:
+    """Áp quy ước dòng trống cho mọi bảng của một mẫu (trả về bản sao + nhật ký)."""
+    block = copy.deepcopy(block or {})
+    log: list[str] = []
+    for g in FORM_GROUPS.get(form, []):
+        table = g.get("table")
+        if not table or table.get("kind") == "fixed":
+            continue
+        rows = block.get(table.get("key") or "rows")
+        rows = rows.get("rows") if isinstance(rows, dict) else rows
+        if not isinstance(rows, list) or not rows:
+            continue
+        before = len(rows)
+        kept, removed = apply_blank_rule(block, table)
+        if removed:
+            log.append(f"Bỏ {removed} dòng trống ở “{g.get('title', '')}” "
+                       f"({before} → {kept} dòng)")
+    return block, log
+
+
 def table_spec(form: str, key: str) -> dict | None:
     """Định nghĩa bảng theo khoá dữ liệu (``rows``, ``r_cach_dien_Mohm``…)."""
     tables = [g["table"] for g in FORM_GROUPS.get(form, []) if g.get("table")]
@@ -243,19 +324,20 @@ def table_spec(form: str, key: str) -> dict | None:
     return None
 
 
-def _cell_value(col: dict, raw) -> str:
+def _cell_value(col: dict, raw, blank: str = "") -> str:
+    """Giá trị 1 ô; ``blank`` là thứ in ra khi ô trống (công ty dùng ``-``)."""
     if raw in (None, ""):
-        return ""
+        return blank
     if col.get("type") in _NUMBER_TYPES:
         return norm_number(raw) if col.get("type") == "number" else digits_only(raw)
     return norm_text(raw)
 
 
-def _clean_row(table: dict, row: dict, index: int) -> list[str]:
+def _clean_row(table: dict, row: dict, index: int, blank: str = "-") -> list[str]:
     """Đổi 1 dòng (object) thành list giá trị đúng thứ tự cột của bảng Word."""
     vals: list[str] = []
     for col in table["columns"]:
-        vals.append(_cell_value(col, row.get(col["key"])))
+        vals.append(_cell_value(col, row.get(col["key"]), blank))
     if table.get("stt"):
         stt = digits_only(row.get("stt")) or str(index + 1)
         vals.insert(0, stt)
@@ -285,6 +367,7 @@ def _rows_of(block: dict, key: str) -> list[dict] | None:
 
 
 def fill_insulation(doc, block: dict, cfg, log) -> list[str]:
+    blank = cfg.get("empty_placeholder", "-")
     t = _find_table(doc, "insulation")
     if t is None:
         return ["Không tìm thấy bảng 'Điện trở cách điện' (mục 2)"]
@@ -298,12 +381,12 @@ def fill_insulation(doc, block: dict, cfg, log) -> list[str]:
             cells = t.rows[ri].cells
             for ci, col in enumerate(spec["columns"], start=1):
                 if ci < len(cells):
-                    _put_force(cells[ci]._tc, _cell_value(col, row.get(col["key"])))
+                    _put_force(cells[ci]._tc, _cell_value(col, row.get(col["key"]), blank))
             log("    ✓ R cách điện {:<18}= {} | {} | {}".format(
                 row.get("key") or f"dòng {ri}",
-                _cell_value(spec["columns"][0], row.get(spec["columns"][0]["key"])),
-                _cell_value(spec["columns"][1], row.get(spec["columns"][1]["key"])),
-                _cell_value(spec["columns"][2], row.get(spec["columns"][2]["key"])),
+                _cell_value(spec["columns"][0], row.get(spec["columns"][0]["key"]), blank),
+                _cell_value(spec["columns"][1], row.get(spec["columns"][1]["key"]), blank),
+                _cell_value(spec["columns"][2], row.get(spec["columns"][2]["key"]), blank),
             ))
         return []
     names = {"cao_vo_ha1": "(Cao+Vỏ) - Hạ 1", "cao_vo_ha2": "(Cao+Vỏ) - Hạ 2",
@@ -392,11 +475,13 @@ def _resize_table(table, total_needed: int) -> None:
 
 
 def fill_row_table(doc, form: str, key: str, block: dict, rows_data: list[dict],
-                   name: str, log, data_key: str | None = None) -> list[str]:
+                   name: str, log, data_key: str | None = None,
+                   blank: str = "-") -> list[str]:
     """Điền bảng từ dữ liệu ``{"rows": [...]}`` – tự thêm/bớt dòng theo dữ liệu.
 
     ``key`` là khoá nhận diện bảng trong file Word (``la``, ``mccb``…);
-    ``data_key`` là khoá trong JSON (mặc định ``rows``).
+    ``data_key`` là khoá trong JSON (mặc định ``rows``); ``blank`` là ký tự in
+    vào ô trống (quy ước công ty: ``-``).
     """
     t = _find_table(doc, key)
     if t is None:
@@ -413,7 +498,8 @@ def fill_row_table(doc, form: str, key: str, block: dict, rows_data: list[dict],
             start = 1
         for ci, col in enumerate(spec.get("columns", [])):
             if start + ci < len(cells):
-                _put_force(cells[start + ci]._tc, _cell_value(col, row.get(col["key"])))
+                _put_force(cells[start + ci]._tc,
+                           _cell_value(col, row.get(col["key"]), blank))
     log(f"    ✓ {name:<33}= {len(rows_data)} dòng số liệu")
     return []
 
@@ -422,7 +508,8 @@ def fill_mccb(doc, block: dict, cfg, log) -> list[str]:
     rows_data = _rows_of(block, "rows")
     if rows_data:
         return fill_row_table(doc, "45", "mccb", block, rows_data,
-                              "Bảng kết quả thử nghiệm", log)
+                              "Bảng kết quả thử nghiệm", log,
+                              blank=cfg.get("empty_placeholder", "-"))
     rows = block.get("ket_qua_thu_nghiem")
     if not rows:
         r = block.get("r_cach_dien_Mohm") or {}
@@ -456,7 +543,8 @@ def fill_la(doc, block: dict, cfg, log) -> list[str]:
     rows_data = _rows_of(block, "rows")
     if rows_data:
         return fill_row_table(doc, "46", "la", block, rows_data,
-                              "Bảng kết quả kiểm định LA", log)
+                              "Bảng kết quả kiểm định LA", log,
+                              blank=cfg.get("empty_placeholder", "-"))
     rows = block.get("ket_qua_thu_nghiem")
     if not rows:
         rows = [[
@@ -471,7 +559,8 @@ def fill_fco(doc, block: dict, cfg, log) -> list[str]:
     rows_data = _rows_of(block, "rows")
     if rows_data:
         return fill_row_table(doc, "47", "fco", block, rows_data,
-                              "Bảng kết quả kiểm định FCO", log)
+                              "Bảng kết quả kiểm định FCO", log,
+                              blank=cfg.get("empty_placeholder", "-"))
     rows = block.get("ket_qua_thu_nghiem")
     if not rows:
         r = block.get("r_cach_dien_Mohm") or {}
@@ -488,6 +577,7 @@ def fill_fco(doc, block: dict, cfg, log) -> list[str]:
 
 
 def fill_earth(doc, block: dict, cfg, log) -> list[str]:
+    blank = cfg.get("empty_placeholder", "-")
     t = _find_table(doc, "earth")
     if t is None:
         return ["Không tìm thấy bảng kết quả đo điện trở nối đất"]
@@ -588,6 +678,9 @@ def build_conclusion(form: str, block: dict, data: dict, cfg: dict) -> str:
     if explicit:
         return norm_text(explicit)
     qty = block.get("so_luong") or 1
+    rows = _rows_of(block, "rows")
+    if block.get("_rows_flat") and rows is not None:
+        qty = len(rows)                 # dữ liệu dạng list: số dòng chính là số lượng
     qty_text = quantity_both(qty)
     device = (block.get("ten_thiet_bi") or "").strip()
     if not device:
@@ -642,6 +735,13 @@ def render_form(
     merged[key] = block
     warnings += fill_frame(doc, form, merged, cfg, log)
 
+    # quy ước dòng trống: bỏ dòng trống hoàn toàn + tự giảm `so_luong`
+    block, blank_log = normalize_blank_rows(form, block)
+    merged[key] = block
+    for line in blank_log:
+        warnings.append(line)
+        log(f"    ✓ {line}")
+
     # giá trị mặc định + kết luận suy ra
     values = copy.deepcopy(block)
     tt = copy.deepcopy(merged.get("thong_tin_chung") or {})
@@ -666,6 +766,16 @@ def render_form(
 
     # in đậm / in hoa theo cấu hình (mặc định: giữ như mẫu)
     apply_header_style(doc, form, cfg)
+
+    # hình nền chính thống: logo công ty làm dấu chìm (mặc định bật)
+    wm = cfg.get("watermark") or {}
+    if wm.get("enabled", True):
+        if not apply_watermark(doc, opacity=wm.get("opacity", 0.06),
+                               scale=wm.get("scale", 0.62),
+                               dpi=wm.get("dpi", 96)):
+            warnings.append("Không tìm thấy logo trong mẫu để làm hình nền chìm")
+        else:
+            log("    ✓ Hình nền chìm                 = logo công ty")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     so = norm_text(block.get("so_bien_ban") or "")

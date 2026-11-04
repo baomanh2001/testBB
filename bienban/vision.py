@@ -51,8 +51,27 @@ FORM_DEVICE = {
 }
 
 
+# Các mã lỗi nên thử bước kế tiếp trong chuỗi dự phòng (model/key khác)
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+
+
 class GeminiError(RuntimeError):
     """Lỗi khi gọi Gemini (đã dịch sang tiếng Việt cho người dùng cuối)."""
+
+
+class GeminiBusy(GeminiError):
+    """Model đang bận / quá tải / hết hạn mức — nên chuyển sang phương án khác.
+
+    ``status`` là mã HTTP gốc (429, 503…) để chuỗi dự phòng quyết định.
+    """
+
+    def __init__(self, message: str, status: int = 0):
+        super().__init__(message)
+        self.status = status
+
+
+class GeminiFatal(GeminiError):
+    """Lỗi không thể sửa bằng cách đổi model/key (sai định dạng ảnh, JSON hỏng…)."""
 
 
 # --------------------------------------------------------------------------- #
@@ -233,17 +252,24 @@ def _request(url: str, *, data: dict | None = None, method: str = "GET") -> dict
         except Exception:
             pass
         if exc.code in (400, 403):
-            raise GeminiError(
+            # key sai hoặc model không tồn tại: thử key/model khác vẫn có ích
+            # (mỗi key có danh sách model được phép khác nhau)
+            raise GeminiBusy(
                 "API key không hợp lệ hoặc không có quyền dùng model này"
-                + (f" ({detail})" if detail else "")
-            ) from exc
-        if exc.code == 429:
-            raise GeminiError("Đã vượt hạn mức gọi Gemini (429). Thử lại sau ít phút.") from exc
+                + (f" ({detail})" if detail else ""), status=exc.code) from exc
+        if exc.code in _RETRY_STATUS:
+            reason = {429: "đã vượt hạn mức (429)",
+                      500: "lỗi máy chủ (500)", 502: "cổng lỗi (502)",
+                      503: "đang quá tải (503)", 504: "quá thời gian (504)"}[exc.code]
+            raise GeminiBusy(f"Gemini {reason}. Thử lại sau ít phút.",
+                             status=exc.code) from exc
         raise GeminiError(f"Gemini trả về lỗi {exc.code}: {detail}") from exc
     except urllib.error.URLError as exc:
-        raise GeminiError(f"Không kết nối được tới Gemini: {exc.reason}") from exc
+        raise GeminiBusy(f"Không kết nối được tới Gemini: {exc.reason}", status=0) from exc
     except TimeoutError as exc:
-        raise GeminiError("Gemini phản hồi quá lâu (timeout). Thử lại với ít ảnh hơn.") from exc
+        raise GeminiBusy("Gemini phản hồi quá lâu (timeout).", status=408) from exc
+    except (ConnectionError, OSError) as exc:
+        raise GeminiBusy(f"Mất kết nối tới Gemini: {exc}", status=0) from exc
 
 
 def list_models(key: str | None = None) -> list[str]:
@@ -294,15 +320,75 @@ def call_gemini(
     key: str | None = None,
     model: str | None = None,
     forms: Iterable[str] | None = None,
+    prompt_override: str | None = None,
+    max_tokens: int = 16384,
+    fallbacks: list[str] | None = None,
+    alt_keys: list[str] | None = None,
+    on_try=None,
 ) -> dict:
-    """Gửi ảnh cho Gemini, trả về JSON thô (đã parse)."""
-    if not images:
-        raise GeminiError("Chưa có ảnh nào để nhận dạng")
-    if len(images) > MAX_IMAGES:
-        raise GeminiError(f"Chỉ gửi tối đa {MAX_IMAGES} ảnh một lần")
+    """Gửi ảnh cho Gemini, tự chuyển phương án khi model bận.
+
+    Chuỗi dự phòng (theo yêu cầu của công ty **chỉ trong Gemini**, không cần
+    tài khoản khác)::
+
+        1. model chính             + key chính
+        2. model dự phòng          + key chính
+        3. model chính             + key dự phòng   (nếu có)
+        4. model dự phòng          + key dự phòng
+
+    Chỉ chuyển bước khi lỗi thuộc loại "thử lại được" (429 / 5xx / timeout /
+    mất mạng / key không có quyền với model đó). Lỗi nội dung (ảnh hỏng, JSON
+    rỗng) thì dừng ngay để báo đúng cho người dùng.
+
+    ``on_try(buoc, model, key_slot, exc)`` được gọi sau mỗi lần thất bại — dùng
+    để ghi nhật ký cho giao diện.
+
+    ``prompt_override`` cho phép dùng lại đường gửi ảnh này cho việc khác
+    (ví dụ bước soát số liệu trong :mod:`bienban.checks`).
+    """
     key = resolve_key(key)
-    model = _wire_model(model or DEFAULT_MODEL)
-    prompt = build_prompt(forms)
+    keys = [key] + [k for k in (alt_keys or []) if k and k != key]
+    models: list[str] = []
+    for m in [model or DEFAULT_MODEL] + list(fallbacks or []):
+        m = _wire_model(m)
+        if m and m not in models:
+            models.append(m)
+
+    steps = [(m, k) for k in keys for m in models]     # key chính trước, rồi key dự phòng
+    last: GeminiError | None = None
+    for idx, (m, k) in enumerate(steps, start=1):
+        try:
+            return _attempt(images, key=k, model=m, forms=forms,
+                            prompt_override=prompt_override, max_tokens=max_tokens)
+        except GeminiBusy as exc:
+            last = exc
+            if on_try:
+                on_try(idx, m, "chính" if k == key else "dự phòng", exc)
+            continue
+        except GeminiFatal:
+            raise
+    assert last is not None
+    raise GeminiError(
+        f"Đã thử {len(steps)} phương án (model/key) nhưng đều thất bại. "
+        f"Lỗi cuối: {last}"
+    ) from last
+
+
+def _attempt(
+    images: list[bytes],
+    *,
+    key: str,
+    model: str,
+    forms: Iterable[str] | None = None,
+    prompt_override: str | None = None,
+    max_tokens: int = 16384,
+) -> dict:
+    """Một lần gửi ảnh cho một model + một key."""
+    if not images:
+        raise GeminiFatal("Chưa có ảnh nào để nhận dạng")
+    if len(images) > MAX_IMAGES:
+        raise GeminiFatal(f"Chỉ gửi tối đa {MAX_IMAGES} ảnh một lần")
+    prompt = prompt_override or build_prompt(forms)
 
     parts: list[dict] = [{"text": prompt}]
     for i, blob in enumerate(images):
@@ -315,7 +401,7 @@ def call_gemini(
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",
-            "maxOutputTokens": 16384,
+            "maxOutputTokens": max_tokens,
         },
     }
     url = f"{GEMINI_BASE}/models/{model}:generateContent?key={key}"
@@ -324,7 +410,7 @@ def call_gemini(
     candidates = data.get("candidates") or []
     if not candidates:
         reason = (data.get("promptFeedback") or {}).get("blockReason")
-        raise GeminiError(
+        raise GeminiFatal(
             "Gemini không trả về kết quả" + (f" (bị chặn: {reason})" if reason else "")
         )
     texts = [
@@ -335,7 +421,7 @@ def call_gemini(
     raw = "".join(texts).strip()
     if not raw:
         finish = candidates[0].get("finishReason")
-        raise GeminiError(
+        raise GeminiFatal(
             "Gemini trả về nội dung rỗng" + (f" (finishReason: {finish})" if finish else "")
         )
     return parse_json_loose(raw)

@@ -355,7 +355,7 @@ def docx_to_html(source: str | Path | bytes, *, title: str = "", footer: str = "
         except Exception:
             footer_text = ""
 
-    return f"""<div class="page">
+    return f"""<div class="page page-wm">
   <div class="page-body">{''.join(body)}</div>
   {f'<div class="page-foot">{html.escape(footer_text)}</div>' if footer_text else ''}
 </div>"""
@@ -373,4 +373,9 @@ PAGE_CSS = """
 .doc-tbl td p{margin:0;text-align:center}
 .page-foot{position:absolute;left:1.2cm;right:1.2cm;bottom:.7cm;font-size:8.5pt;
            color:#555;border-top:1px solid #bbb;padding-top:3pt;text-align:center}
-"""
+/* dấu chìm (logo công ty) — ảnh nền do web/app.py chèn thêm khi có logo */
+.page-wm::before{content:"";position:absolute;inset:1cm 1.2cm;pointer-events:none;
+  background-position:center center;background-repeat:no-repeat;background-size:52% auto;
+  opacity:var(--wm-opacity,.06);z-index:0}
+.page-wm .page-body{position:relative;z-index:1}
+/**/"""

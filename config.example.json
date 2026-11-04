@@ -1,11 +1,9 @@
 {
   "_huong_dan": "Sao chép file này thành config.json rồi sửa. Mọi khoá đều tuỳ chọn; thiếu thì dùng giá trị mặc định trong bienban/fill.py",
-
   "company": {
     "name": "CÔNG TY CP THÍ NGHIỆM ĐIỆN TOÀN CẦU",
     "code_suffix": "/BB-TC"
   },
-
   "style": {
     "_giai_thich": "header_values: 'template' = giữ đúng định dạng mẫu (khuyến nghị, đúng biên bản công ty đang dùng) | 'bold_upper' = in đậm + in hoa phần giá trị của Tên công trình / Địa chỉ / Kết luận",
     "header_values": "template",
@@ -14,9 +12,7 @@
     "bold_values": false,
     "upper_values": false
   },
-
   "empty_placeholder": "-",
-
   "defaults": {
     "tan_so": "50Hz",
     "so_pha": "01",
@@ -27,11 +23,30 @@
     "noi_kiem_dinh": "Tại hiện trường",
     "ly_do_kiem_dinh": "Sau sự cố"
   },
-
   "conclusions": {
     "_giai_thich": "Dùng khi JSON không có khoá ket_luan. {qty} = 'Một (01)', {device} = tên thiết bị",
     "default_template": "{qty} {device} trên đạt yêu cầu đóng điện vận hành"
   },
-
-  "forms": ["44", "45", "46", "47", "48"]
+  "forms": [
+    "44",
+    "45",
+    "46",
+    "47",
+    "48"
+  ],
+  "watermark": {
+    "enabled": true,
+    "opacity": 0.06,
+    "scale": 0.62,
+    "dpi": 96,
+    "_comment": "Hình nền chính thống = logo công ty làm dấu chìm. opacity 0.04–0.10 vừa mắt khi in."
+  },
+  "ai": {
+    "_giai_thich": "Chuỗi dự phòng khi Gemini bận (429 / 5xx / timeout): thử model kế tiếp, rồi khoá kế tiếp. Không cần tài khoản khác.",
+    "fallback_models": [
+      "gemini-2.5-pro",
+      "gemini-2.0-flash"
+    ],
+    "fallback_keys": []
+  }
 }
