@@ -133,8 +133,10 @@ def check() -> int:
         print("  Thư viện      : đủ (python-docx, lxml, Flask)")
 
     templates = sorted((ROOT / "templates").glob("*.docx"))
-    print(f"  Mẫu Word      : {len(templates)}/5 file")
-    ok = ok and len(templates) >= 5
+    from bienban.spec import TEMPLATES          # 6 mẫu: 44–49
+    want = max(len(TEMPLATES), 5)
+    print(f"  Mẫu Word      : {len(templates)}/{want} file")
+    ok = ok and len(templates) >= want
 
     key = os.environ.get("GEMINI_API_KEY") or read_env().get("GEMINI_API_KEY")
     print(f"  API key Gemini: {'đã có' if key else 'chưa có (nhập sau khi chạy, hoặc dán vào .env)'}")

@@ -54,6 +54,7 @@ FORM_DEVICE = {
     "46": "Chống sét van (LA)",
     "47": "Cầu chì tự rơi (FCO)",
     "48": "Điện trở nối đất",
+    "49": "Máy biến áp 3 pha (MBA 3P, Dyn11)",
 }
 
 
@@ -62,6 +63,17 @@ _RETRY_STATUS = {429, 500, 502, 503, 504}
 #: Thông báo của Google khi model đã bị khai tử (đi kèm HTTP 404)
 _GONE = re.compile(r"no longer available|is not found|does not exist|has been (shut ?down|retired)",
                    re.I)
+
+
+#: Dấu hiệu nhận diện nhanh một tờ biên bản thuộc mẫu nào (dùng trong prompt).
+FORM_ANCHORS = {
+    "44": "tiêu đề “MÁY BIẾN ÁP 1 PHA”; bảng cách điện có (Cao+Vỏ) – Hạ 1 / – Hạ 2 / Hạ 1 – Hạ 2",
+    "45": "tiêu đề “MÁY CẮT HẠ THẾ (MCCB)”; bảng có R cách điện Close/Open + R tiếp xúc Pha A/B/C + Số tem",
+    "46": "tiêu đề “CHỐNG SÉT VAN (LA)”; bảng có Điện trở cách điện / Dòng điện rò (µA) / Điện áp AC tăng cao",
+    "47": "tiêu đề “CẦU CHÌ TỰ RƠI (FCO)”; bảng có Trước khi thử cao áp / Sau khi thử cao áp",
+    "48": "tiêu đề “ĐIỆN TRỞ NỐI ĐẤT”; bảng có Tình trạng kết nối trung tính / Loại tiếp đất / Giá trị đo (Ω)",
+    "49": "tiêu đề “MÁY BIẾN ÁP 3 PHA”; Số pha 03 + Tổ đấu dây Dyn11; bảng cách điện Cao – Vỏ / Cao – Hạ / Hạ – Vỏ; tỉ số K1/K2/K3",
+}
 
 
 class GeminiError(RuntimeError):
@@ -123,8 +135,59 @@ def _guess_mime(blob: bytes) -> str:
 # --------------------------------------------------------------------------- #
 # Prompt
 # --------------------------------------------------------------------------- #
+#: Mô tả ngắn "ô này nằm ở đâu / viết thế nào trên tờ biên bản" – giúp AI khỏi
+#: nhầm giữa các ô gần giống nhau (số máy vs số tem, R60 vs R15, K1 vs K2…).
+FIELD_HINTS: dict[str, str] = {
+    "so_tem": "ô “- Số tem:” ở góc phải mục I (6 chữ số, thường dán tem vàng)",
+    "so_may": "ô “- Số máy:” ngay dưới Số tem",
+    "hieu_may": "ô “- Hiệu máy:” dòng đầu mục I; với mẫu 49 khoá này cũng nhận "
+                "tên hãng ghi ở tiêu đề thiết bị",
+    "hieu": "ô “- Hiệu:” mục II (tên hãng, VD MITSUBISHI)",
+    "nam_san_xuat": "ô “- Năm sản xuất:” (4 chữ số)",
+    "nuoc_san_xuat": "ô “- Nước sản xuất:” (VD Việt Nam)",
+    "cong_suat_dinh_muc": "ô “- Công suất định mức:” mục II, giữ nguyên chữ kVA",
+    "so_pha": "ô “- Số pha:” – MBA 1 pha ghi 01, MBA 3 pha ghi 03",
+    "tan_so": "ô “- Tần số:” (50 Hz hoặc 50/60Hz)",
+    "dien_ap_dinh_muc": "ô “- Điện áp định mức:” – ghi cả cấp áp, VD 22/0.4kV",
+    "to_dau_day": "ô “- Tổ đấu dây:” – MBA 3 pha thường Dyn11, 1 pha là I/I0",
+    "nhiet_do": "ô “- Nhiệt độ:” cạnh dòng “Điện trở cách điện” (chỉ số °C)",
+    "kiem_tra_ben_ngoai": "dòng “1. Kiểm tra bên ngoài:” – thường “Bình thường”",
+    "r60": "cột R60″(MΩ) – giá trị lớn hơn R15″",
+    "r15": "cột R15″(MΩ) – giá trị nhỏ hơn R60″",
+    "knt": "cột Kht – luôn ≈ R60/R15, dùng để kiểm tra chéo",
+    "cao_vo": "dòng “Cao – Vỏ”",
+    "cao_ha": "dòng “Cao – Hạ”",
+    "ha_vo": "dòng “Hạ – Vỏ”",
+    "cao_vo_ha1": "dòng “(Cao+Vỏ) – Hạ 1”",
+    "cao_vo_ha2": "dòng “(Cao+Vỏ) – Hạ 2”",
+    "ha1_ha2": "dòng “Hạ 1 – Hạ 2”",
+    "ab": "cột AB của cuộn dây cao áp (mỗi nấc 1 giá trị)",
+    "bc": "cột BC của cuộn dây cao áp",
+    "ca": "cột CA của cuộn dây cao áp",
+    "k1": "cột K1 trong bảng “Tỉ số biến áp” (KHÔNG phải Kht của bảng cách điện)",
+    "k2": "cột K2 trong bảng “Tỉ số biến áp”",
+    "k3": "cột K3 trong bảng “Tỉ số biến áp”",
+    "u0_V": "ô U0(V) của bảng “Thử nghiệm không tải”",
+    "i0_A": "ô I0(A) – dòng không tải",
+    "i0_pct": "ô I0% – phần trăm dòng không tải",
+    "p0_W": "ô P0(W) – tổn thất không tải",
+    "uk_V": "ô UN(V) của bảng “Thử nghiệm ngắn mạch”",
+    "uk_pct": "ô UN(%) – điện áp ngắn mạch phần trăm",
+    "ik_A": "ô IN(A) – dòng ngắn mạch",
+    "pk_W": "ô PN75(W) – tổn thất ngắn mạch",
+    "thoi_gian": "cột “Thời gian thử” (thường “1 phút”)",
+    "gia_tri_do_Ohm": "cột “Giá trị đo (Ω)” của bảng nối đất",
+    "chi_danh": "dòng “- Chỉ danh:” – nếu ảnh không ghi thì BỎ TRỐNG",
+}
+
+
 def _field_lines(form: str) -> list[str]:
-    """Sinh danh sách khoá + nhãn tiếng Việt của một mẫu (thẳng từ schema)."""
+    """Sinh danh sách khoá + nhãn + **vị trí trên tờ giấy** cho từng ô.
+
+    Mỗi dòng nói rõ khoá JSON, nhãn tiếng Việt, đơn vị, kiểu dữ liệu và ô đó
+    nằm ở đâu — nhờ vậy AI ít nhầm giữa các ô gần giống nhau (số máy/số tem,
+    R60/R15, K1/Kht…).
+    """
     out: list[str] = []
     for g in FORM_GROUPS[form]:
         if "table" in g:
@@ -140,16 +203,24 @@ def _field_lines(form: str) -> list[str]:
             out.append(f'  - "{t["key"]}": danh sách dòng, mỗi dòng là object gồm '
                        + ", ".join(cols))
             if t.get("kind") == "fixed":
-                keys = ", ".join(f'"{r["key"]}" ({r["label"]})' for r in t["rows"])
-                out.append(f"    + object này luôn có đúng 3 khoá: {keys}")
+                parts = []
+                for r in t["rows"]:
+                    where = FIELD_HINTS.get(r["key"])
+                    parts.append(f'"{r["key"]}" ({r["label"]}'
+                                 + (f' – {where}' if where else "") + ")")
+                out.append(f"    + object này có {len(t['rows'])} khoá, theo đúng thứ tự in: "
+                           + "; ".join(parts))
             continue
         for f in g.get("fields", []):
             unit = f' – đơn vị {f["unit"]}' if f.get("unit") else ""
-            hint = f' – {f["hint"]}' if f.get("hint") else ""
+            # gợi ý vị trí trên tờ giấy (ưu tiên) rồi mới tới hint của schema
+            where = FIELD_HINTS.get(f["key"].split(".")[-1]) or FIELD_HINTS.get(f["key"])
+            hint = f" – {f['hint']}" if f.get("hint") else ""
             typ = {"code": "chỉ chữ số", "date": "dd/mm/yyyy",
                    "number": "số, dấu phẩy thập phân"}.get(f["type"], "")
             extra = f" [{typ}]" if typ else ""
-            out.append(f'  - "{f["key"]}": {f["label"]}{unit}{extra}{hint}')
+            loc = f" – ĐỌC Ở: {where}" if where else ""
+            out.append(f'  - "{f["key"]}": {f["label"]}{unit}{extra}{loc}{hint}')
     return out
 
 
@@ -179,7 +250,28 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
                  "7. Một tờ biên bản có thể chụp thành nhiều ảnh (ảnh trên + ảnh dưới): "
                  "hãy GỘP lại thành một biên bản, không tạo 2 biên bản trùng.\n"
                  "8. Chỉ tạo những dòng bảng có thật trên ảnh. Không thêm dòng trống.\n"
-                 "9. Trả về JSON thuần, không kèm lời giải thích, không dùng markdown.\n")
+                 "9. Trả về JSON thuần, không kèm lời giải thích, không dùng markdown.\n"
+                 "10. Phân biệt máy biến áp 1 pha (mẫu 44) và 3 pha (mẫu 49) bằng "
+                 "TIÊU ĐỀ và BẢNG, không đoán:\n"
+                 "    • Tiêu đề ghi “MÁY BIẾN ÁP 3 PHA”, hoặc mục II có Số pha = 03 / "
+                 "Tổ đấu dây kiểu Dyn11, Yyn0 → mẫu 49.\n"
+                 "    • Bảng cách điện có dòng “Cao – Vỏ”, “Cao – Hạ”, “Hạ – Vỏ” → mẫu 49.\n"
+                 "    • Bảng cách điện có “(Cao+Vỏ) – Hạ 1”, “(Cao+Vỏ) – Hạ 2”, "
+                 "“Hạ 1 – Hạ 2” → mẫu 44.\n"
+                 "    • Bảng tỉ số có cột K1/K2/K3 → mẫu 49; có cột “Hạ 1” và "
+                 "“Hạ 2” → mẫu 44.\n"
+                 "    Nếu ảnh là MBA 3 pha thì TUYỆT ĐỐI không trả về report_type 44.\n"
+                 "11. Đọc bảng theo đúng hàng/cột in trên giấy, không suy diễn:\n"
+                 "    • Mỗi dòng nấc chỉ lấy đúng ô giao với cột đó (AB, BC, CA…).\n"
+                 "    • Ô gộp ghi nhiều dòng (an: 0,885 / bn: 0,887 / cn: 0,889) thì "
+                 "tách thành từng khoá riêng, không gộp thành một chuỗi.\n"
+                 "12. Tự kiểm chéo trước khi trả về, nếu lệch thì đọc lại ảnh:\n"
+                 "    • Kht ≈ R60/R15 (sai quá 0,05 → ghi vào ai_notes).\n"
+                 "    • R60 > R15 ở mọi dòng cách điện.\n"
+                 "    • Dãy nấc phải giảm dần hoặc tăng dần đều, không nhảy cóc.\n"
+                 "    • K1, K2, K3 ở cùng một nấc phải xấp xỉ bằng nhau.\n"
+                 "13. Số pha và tổ đấu dây phải khớp nhau: 03 ↔ Dyn11/Yyn0…; "
+                 "01 ↔ I/I0.\n")
 
     parts.append("=== DANH SÁCH ẢNH ===\n"
                  "Mỗi ảnh được gửi kèm nhãn \"image_index = N\" ngay trước nó. "
@@ -202,7 +294,8 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
                  '  "context_photos": [{"image_index": 0, "summary": "ảnh này chụp gì"}],\n'
                  '  "reports": [\n'
                  "    {\n"
-                 '      "report_type": "44" | "45" | "46" | "47" | "48",\n'
+                 '      "report_type": "'
+                 + '" | "'.join(forms) + '",\n'
                  '      "source_image_indices": [các image_index của tờ biên bản này],\n'
                  '      "confidence": "high" | "medium" | "low",\n'
                  '      "ai_notes": ["điểm chưa chắc chắn, chữ mờ, số bị sửa…"],\n'
@@ -211,13 +304,17 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
                  "    }\n"
                  "  ]\n"
                  "}\n"
-                 'Nếu ảnh không phải biên bản nào trong 5 mẫu dưới đây thì cho vào '
-                 '"context_photos" và KHÔNG tạo report.\n')
+                 f'Nếu ảnh không phải biên bản nào trong {len(forms)} mẫu dưới đây '
+                 'thì cho vào "context_photos" và KHÔNG tạo report.\n')
 
     for form in forms:
+        anchor = FORM_ANCHORS.get(form)
         parts.append(f"=== MẪU {form}: {TITLES[form]} – {FORM_DEVICE[form]} "
-                     f"(khoá report_type = \"{form}\") ===\n"
-                     "Các khoá của \"data\":\n" + "\n".join(_field_lines(form)) + "\n")
+                     f"(khoá report_type = \"{form}\") ===\n")
+        if anchor:
+            parts.append(f"NHẬN DIỆN MẪU {form}: {anchor}\n")
+        parts.append("Các khoá của \"data\":\n"
+                     + "\n".join(_field_lines(form)) + "\n")
         key = DATA_KEYS[form]
         parts.append(f"(Khi phần mềm lưu, \"data\" của mẫu {form} nằm dưới khoá "
                      f"\"{key}\".)\n")
@@ -227,6 +324,13 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
         'Mẫu 45, dòng thứ nhất: {"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", '
         '"rtx_a": "273", "rtx_b": "275", "rtx_c": "279", "utest": "3", "dong_cat": "5", '
         '"ket_qua": "Đạt", "so_tem": "017215"}\n'
+        "=== VÍ DỤ BẢNG 3 PHA (mẫu 49) ===\n"
+        'Cách điện: {"cao_vo": {"r60": "15300", "r15": "11300", "knt": "1,35"}, '
+        '"cao_ha": {…}, "ha_vo": {…}}\n'
+        'Cuộn cao áp: {"cao_ap": {"ab": ["3,413", …5 nấc], "bc": […], "ca": […]}, '
+        '"ha_ap_mOhm": {"an": "0,885", "bn": "0,887", "cn": "0,889"}}\n'
+        'Tỉ số: {"k1": ["57,759", …5 nấc], "k2": […], "k3": […]}\n'
+        'Điện áp thử: {"cao_vo": "50", "ha_vo": "3", "thoi_gian": "1 phút"}\n'
         "Nhãn \"Chỉ danh\" nếu ảnh không ghi thì BỎ TRỐNG (phần mềm tự ghép).\n"
         "Nhãn \"Kết luận\" chỉ chép khi ảnh có câu kết luận; không có thì bỏ trống.\n"
     )
@@ -540,10 +644,15 @@ _SERIES_HINT = {
     "44": {"r_cuon_day_1_chieu_ohm.cao_ap": 5,
            "r_cuon_day_1_chieu_ohm.ha_ap_mOhm": 2,
            "ti_so_bien_ap.ha_1": 5, "ti_so_bien_ap.ha_2": 5},
+    "49": {"r_cuon_day_1_chieu_ohm.cao_ap.ab": 5,
+           "r_cuon_day_1_chieu_ohm.cao_ap.bc": 5,
+           "r_cuon_day_1_chieu_ohm.cao_ap.ca": 5,
+           "ti_so_bien_ap.k1": 5, "ti_so_bien_ap.k2": 5, "ti_so_bien_ap.k3": 5},
 }
 
 _FIXED_ROWS = {
     "44": ("r_cach_dien_Mohm", ["cao_vo_ha1", "cao_vo_ha2", "ha1_ha2"]),
+    "49": ("r_cach_dien_Mohm", ["cao_vo", "cao_ha", "ha_vo"]),
 }
 
 

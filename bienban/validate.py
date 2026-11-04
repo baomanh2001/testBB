@@ -38,6 +38,7 @@ FORM_KEYS = [
     ("46", "bien_ban_46_la"),
     ("47", "bien_ban_47_fco"),
     ("48", "bien_ban_48_tiep_dat"),
+    ("49", "bien_ban_49_mba_3p"),
 ]
 
 REQUIRED_COMMON = [
@@ -98,6 +99,14 @@ REQUIRED_FIELDS = {
         ("loai_tiep_dat", True, "Loại tiếp đất"),
         ("gia_tri_do_Ohm", True, "Giá trị đo"),
         ("thiet_bi_do", True, "Thiết bị đo"),
+    ],
+    "49": [
+        ("hieu_may", True, "Hiệu máy"),
+        ("so_may", True, "Số máy"),
+        ("cong_suat_dinh_muc", True, "Công suất định mức"),
+        ("dien_ap_dinh_muc", True, "Điện áp định mức"),
+        ("to_dau_day", True, "Tổ đấu dây"),
+        ("so_bien_ban", True, "Số biên bản"),
     ],
 }
 
@@ -257,6 +266,18 @@ def validate(data: dict) -> list[Problem]:
                                 "Thiếu số liệu điện trở cách điện – sẽ in dấu “-”",
                             )
                         )
+        # --- MBA 3 pha: Số pha phải là 03 (hoặc bội của 3) ---
+        if form == "49":
+            so_pha = digits_only(block.get("so_pha") or "")
+            if so_pha and so_pha not in ("03", "3", "003"):
+                problems.append(Problem(
+                    "warn", f"{key}.so_pha",
+                    f"Mẫu 49 là máy biến áp 3 pha nhưng Số pha = {so_pha}"))
+            to_dau = str(block.get("to_dau_day") or "").strip()
+            if to_dau and not re.match(r"^(D|Y|YN|Dyn|Yyn|Yd|Dy|Dz|Yz)", to_dau, re.I):
+                problems.append(Problem(
+                    "warn", f"{key}.to_dau_day",
+                    f"Tổ đấu dây {to_dau!r} không giống quy ước (Dyn11, Yyn0…)"))
         if form == "45" and block.get("so_tem"):
             _check_code(block["so_tem"], f"{key}.so_tem", problems, length=6)
         if form == "48" and block.get("gia_tri_do_Ohm") is not None:
@@ -266,6 +287,26 @@ def validate(data: dict) -> list[Problem]:
                     Problem("warn", f"{key}.gia_tri_do_Ohm",
                             f"{val!r} sẽ được ghi thành {val.replace('.', ',')}")
                 )
+
+    # --- Chặn in sai mẫu: Số pha không khớp mẫu biên bản ---
+    b44 = data.get("bien_ban_44_mba")
+    if isinstance(b44, dict):
+        so_pha = digits_only(b44.get("so_pha") or "")
+        if so_pha and so_pha not in ("01", "1", "001"):
+            problems.append(Problem(
+                "error", "bien_ban_44_mba.so_pha",
+                f"Mẫu 44 là MÁY BIẾN ÁP 1 PHA nhưng Số pha = {so_pha}. "
+                "Hãy dùng mẫu 49 (MBA 3 PHA) cho máy 3 pha.",
+                blocking=True))
+    b49 = data.get("bien_ban_49_mba_3p")
+    if isinstance(b49, dict):
+        so_pha = digits_only(b49.get("so_pha") or "")
+        if so_pha and so_pha in ("01", "1", "001"):
+            problems.append(Problem(
+                "error", "bien_ban_49_mba_3p.so_pha",
+                "Mẫu 49 là MÁY BIẾN ÁP 3 PHA nhưng Số pha = 01. "
+                "Hãy dùng mẫu 44 (MBA 1 PHA).",
+                blocking=True))
 
     if not found_any:
         problems.append(Problem("error", "$", "Không có khối bien_ban_44..48 nào",

@@ -143,6 +143,95 @@ def check_rules(data: dict) -> list[Warning_]:
                 f"{calc:.2f}".replace(".", ",") + " — kiểm tra lại",
                 field="knt", form="44"))
 
+    # ---------- MBA 3 PHA (mẫu 49): kiểm chéo số liệu ----------
+    b49 = data.get("bien_ban_49_mba_3p") or {}
+    if b49:
+        rcd49 = b49.get("r_cach_dien_Mohm")
+        items49 = rcd49.get("rows") if isinstance(rcd49, dict) else (rcd49 or [])
+        ten_dong = {"cao_vo": "Cao – Vỏ", "cao_ha": "Cao – Hạ", "ha_vo": "Hạ – Vỏ"}
+        for i, it in enumerate(items49 or []):
+            if not isinstance(it, dict):
+                continue
+            r60, r15, kht = _num(it.get("r60")), _num(it.get("r15")), _num(it.get("knt"))
+            name = ten_dong.get(it.get("key") or "", it.get("key") or f"dòng {i + 1}")
+            if r60 and r15:
+                calc = r60 / r15
+                if kht is None:
+                    out.append(Warning_(
+                        "info", f"bien_ban_49_mba_3p.r_cach_dien_Mohm[{i}].knt",
+                        f"{name}: để trống Kht — tự tính được {calc:.2f}".replace(".", ","),
+                        field="knt", form="49"))
+                elif abs(calc - kht) > 0.05:
+                    out.append(Warning_(
+                        "warn", f"bien_ban_49_mba_3p.r_cach_dien_Mohm[{i}].knt",
+                        f"{name}: Kht ghi {it.get('knt')} nhưng R60/R15 = "
+                        f"{calc:.2f}".replace(".", ",") + " — kiểm tra lại",
+                        field="knt", form="49"))
+                if r60 < r15:
+                    out.append(Warning_(
+                        "warn", f"bien_ban_49_mba_3p.r_cach_dien_Mohm[{i}].r60",
+                        f"{name}: R60 ({it.get('r60')}) nhỏ hơn R15 ({it.get('r15')}) — "
+                        "thường phải ngược lại, có thể đọc nhầm cột",
+                        field="r60", form="49"))
+        # 3 pha của cùng một nấc phải xấp xỉ bằng nhau
+        phases = (b49.get("r_cuon_day_1_chieu_ohm") or {}).get("cao_ap") or {}
+        if isinstance(phases, dict):
+            seqs = {k: [_num(v) for v in (phases.get(k) or [])]
+                    for k in ("ab", "bc", "ca")}
+            for i in range(5):
+                vals = [s[i] for s in seqs.values() if len(s) > i and s[i] is not None]
+                if len(vals) < 2:
+                    continue
+                lo, hi = min(vals), max(vals)
+                if lo and (hi - lo) / lo > 0.10:
+                    out.append(Warning_(
+                        "warn", f"bien_ban_49_mba_3p.r_cuon_day_1_chieu_ohm.cao_ap[{i}]",
+                        f"Nấc {i + 1}: AB/BC/CA chênh tới {(hi - lo) / lo * 100:.0f}% "
+                        f"({lo:g} … {hi:g}) — 3 pha thường xấp xỉ bằng nhau",
+                        field="ab", form="49"))
+                    break
+            # dãy nấc phải đơn điệu
+            for ph, seq in seqs.items():
+                clean = [v for v in seq if v is not None]
+                for j in range(1, len(clean)):
+                    if clean[j - 1] and abs(clean[j] - clean[j - 1]) / clean[j - 1] > 0.25:
+                        out.append(Warning_(
+                            "warn",
+                            f"bien_ban_49_mba_3p.r_cuon_day_1_chieu_ohm.cao_ap.{ph}[{j}]",
+                            f"Cột {ph.upper()}: nấc {j + 1} = {clean[j]:g} lệch "
+                            f"{abs(clean[j] - clean[j - 1]) / clean[j - 1] * 100:.0f}% so "
+                            f"với nấc {j} = {clean[j - 1]:g} — có thể đọc nhầm chữ số",
+                            field=ph, form="49"))
+                        break
+        # K1 ≈ K2 ≈ K3 ở mỗi nấc
+        ratios = b49.get("ti_so_bien_ap") or {}
+        if isinstance(ratios, dict):
+            rseq = {k: [_num(v) for v in (ratios.get(k) or [])] for k in ("k1", "k2", "k3")}
+            for i in range(5):
+                vals = [s[i] for s in rseq.values() if len(s) > i and s[i] is not None]
+                if len(vals) < 2:
+                    continue
+                lo, hi = min(vals), max(vals)
+                if lo and (hi - lo) / lo > 0.02:
+                    out.append(Warning_(
+                        "warn", f"bien_ban_49_mba_3p.ti_so_bien_ap[{i}]",
+                        f"Nấc {i + 1}: K1/K2/K3 chênh tới {(hi - lo) / lo * 100:.1f}% "
+                        f"({lo:g} … {hi:g}) — ba pha thường gần như bằng nhau",
+                        field="k1", form="49"))
+                    break
+        # số pha / tổ đấu dây
+        so_pha = digits_only(b49.get("so_pha") or "")
+        if so_pha and so_pha not in ("03", "3", "003"):
+            out.append(Warning_(
+                "warn", "bien_ban_49_mba_3p.so_pha",
+                f"Mẫu 49 là MBA 3 pha nhưng Số pha = {so_pha}", field="so_pha", form="49"))
+        to_dau = str(b49.get("to_dau_day") or "").strip()
+        if to_dau and re.match(r"^I{1,2}/I", to_dau, re.I):
+            out.append(Warning_(
+                "warn", "bien_ban_49_mba_3p.to_dau_day",
+                f"Tổ đấu dây {to_dau!r} là của MBA 1 pha — kiểm tra lại mẫu",
+                field="to_dau_day", form="49"))
+
     # ---------- dãy nấc lệch bất thường (mẫu 44) ----------
     for key, label, path in (
         ("bien_ban_44_mba", "Tỉ số biến áp – Hạ 1", "ti_so_bien_ap.ha_1"),

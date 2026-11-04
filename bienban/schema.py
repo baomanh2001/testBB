@@ -159,6 +159,87 @@ FORM_GROUPS: dict[str, list[dict]] = {
              "hint": "Để trống = tool tự sinh câu kết luận chuẩn"},
         ]},
     ],
+    # ------------------------------------------------------------------ 49 --
+    # MBA 3 PHA – dựng theo bản in ``092 BB MBA 1500kVA.doc``. Khác 44 ở 4 bảng:
+    # cách điện Cao–Vỏ/Cao–Hạ/Hạ–Vỏ, cuộn dây AB/BC/CA, tỉ số K1/K2/K3,
+    # và điện áp thử Cao–(Hạ+vỏ) / Hạ–(Cao+vỏ).
+    "49": [
+        {"title": "I. Lý lịch máy biến áp 3 pha", "position": "before_common", "fields": [
+            _txt("hieu_may", "Hiệu máy", "VD: THIBIDI"),
+            _txt("so_tem", "Số tem", "6 chữ số in trên tem kiểm định", type="code"),
+            _txt("so_may", "Số máy", "VD: 103150017", type="code"),
+            _txt("nam_san_xuat", "Năm sản xuất", "VD: 2010", type="code"),
+            _txt("nuoc_san_xuat", "Nước sản xuất", "VD: Việt Nam",
+                 **{"type": "select", "options": ["Việt Nam", "Trung Quốc", "Hàn Quốc",
+                                                 "Nhật Bản", "Đài Loan", "Thái Lan"]}),
+        ]},
+        {"title": "II. Quy cách kỹ thuật", "fields": [
+            _num("cong_suat_dinh_muc", "Công suất định mức", "kVA", "VD: 1500kVA"),
+            _txt("so_pha", "Số pha", "VD: 03", type="code"),
+            _num("tan_so", "Tần số", "Hz", "VD: 50 Hz"),
+            _num("dien_ap_dinh_muc", "Điện áp định mức", "kV", "VD: 22/0.4kV"),
+            _txt("to_dau_day", "Tổ đấu dây", "VD: Dyn11"),
+            _num("nhiet_do", "Nhiệt độ khi đo", "°C", "VD: 34"),
+            _txt("kiem_tra_ben_ngoai", "Kiểm tra bên ngoài", "", type="select",
+                 options=_NGOAI),
+        ]},
+        {"title": "1. Điện trở cách điện (MΩ) – 3 dòng của MBA 3 pha", "table": {
+            "kind": "fixed", "key": "r_cach_dien_Mohm", "stt": False,
+            "columns": [
+                {"key": "r60", "label": "R60″ (MΩ)", "type": "number"},
+                {"key": "r15", "label": "R15″ (MΩ)", "type": "number"},
+                {"key": "knt", "label": "Kht = R60/R15", "type": "number"},
+            ],
+            "rows": [
+                {"key": "cao_vo", "label": "Cao – Vỏ"},
+                {"key": "cao_ha", "label": "Cao – Hạ"},
+                {"key": "ha_vo", "label": "Hạ – Vỏ"},
+            ],
+        }},
+        {"title": "2. Điện trở một chiều cuộn dây cao áp (Ω) – 5 nấc × AB/BC/CA",
+         "fields": [
+            _series("r_cuon_day_1_chieu_ohm.cao_ap.ab", "Cuộn cao áp AB (Ω)", 5, "Ω",
+                    item_labels=[f"Nấc {i}" for i in range(1, 6)]),
+            _series("r_cuon_day_1_chieu_ohm.cao_ap.bc", "Cuộn cao áp BC (Ω)", 5, "Ω",
+                    item_labels=[f"Nấc {i}" for i in range(1, 6)]),
+            _series("r_cuon_day_1_chieu_ohm.cao_ap.ca", "Cuộn cao áp CA (Ω)", 5, "Ω",
+                    item_labels=[f"Nấc {i}" for i in range(1, 6)]),
+        ]},
+        {"title": "2b. Điện trở cuộn dây hạ áp (mΩ) – an / bn / cn", "fields": [
+            _num("r_cuon_day_1_chieu_ohm.ha_ap_mOhm.an", "Hạ áp – an", "mΩ"),
+            _num("r_cuon_day_1_chieu_ohm.ha_ap_mOhm.bn", "Hạ áp – bn", "mΩ"),
+            _num("r_cuon_day_1_chieu_ohm.ha_ap_mOhm.cn", "Hạ áp – cn", "mΩ"),
+        ]},
+        {"title": "3. Tỉ số biến áp – K1 / K2 / K3 (5 nấc)", "fields": [
+            _series("ti_so_bien_ap.k1", "Tỉ số K1", 5,
+                    item_labels=[f"Nấc {i}" for i in range(1, 6)]),
+            _series("ti_so_bien_ap.k2", "Tỉ số K2", 5,
+                    item_labels=[f"Nấc {i}" for i in range(1, 6)]),
+            _series("ti_so_bien_ap.k3", "Tỉ số K3", 5,
+                    item_labels=[f"Nấc {i}" for i in range(1, 6)]),
+        ]},
+        {"title": "4. Thí nghiệm không tải", "fields": [
+            _num("khong_tai.u0_V", "U0", "V"),
+            _num("khong_tai.i0_A", "I0", "A"),
+            _num("khong_tai.i0_pct", "I0%", "%"),
+            _num("khong_tai.p0_W", "P0", "W"),
+        ]},
+        {"title": "5. Thí nghiệm ngắn mạch", "fields": [
+            _num("ngan_mach.uk_V", "UN", "V"),
+            _num("ngan_mach.uk_pct", "UN%", "%"),
+            _num("ngan_mach.ik_A", "IN", "A"),
+            _num("ngan_mach.pk_W", "PN75", "W"),
+        ]},
+        {"title": "6. Thử điện áp tăng cao (MBA 3 pha)", "fields": [
+            _num("thu_dien_ap_tang_cao.cao_vo", "Cao – (Hạ + vỏ)", "kV"),
+            _num("thu_dien_ap_tang_cao.ha_vo", "Hạ – (Cao + vỏ)", "kV"),
+            _txt("thu_dien_ap_tang_cao.thoi_gian", "Thời gian thử", "VD: 1 phút"),
+        ]},
+        {"title": "Kết luận", "fields": [
+            {"key": "ket_luan", "label": "Kết luận", "type": "textarea",
+             "hint": "Để trống = tool tự sinh “Máy biến áp 3 pha trên đạt yêu cầu…”"},
+        ]},
+    ],
     # ------------------------------------------------------------------ 45 --
     "45": [
         {"title": "I. Thông tin thiết bị", "fields": [

@@ -225,6 +225,14 @@ def _last_blobs() -> list[bytes]:
     return list(_LAST_IMAGES.get("blobs") or [])
 
 
+def _form_of(where: str) -> str:
+    """Đoán số mẫu từ đường dẫn khoá (``bien_ban_49_mba_3p.so_pha`` → ``49``)."""
+    for form, key in DATA_KEYS.items():
+        if where.startswith(key):
+            return form
+    return ""
+
+
 @app.post("/api/check")
 def api_check():
     """Soát số liệu sau khi AI đọc ảnh — trả về "log nhỏ" cảnh báo.
@@ -236,8 +244,16 @@ def api_check():
     if not isinstance(data, dict):
         return jsonify({"ok": False, "error": "JSON không hợp lệ"}), 400
 
-    warnings_ = checks.check_rules(data)
-    out = [w.as_dict() for w in warnings_]
+    problems = validate(data)
+    blocking = [p for p in problems if p.blocking]
+    out = [{"source": "rule", "level": "error", "message": p.message,
+            "where": p.where, "field": (p.where or "").rsplit(".", 1)[-1],
+            "form": _form_of(p.where or ""), "value": "", "suggest": "",
+            "blocking": True} for p in blocking]
+    # lỗi cấu trúc đã hiện ở trên rồi → lớp quy tắc khỏi nhắc lại
+    da_bao = {p.where for p in blocking}
+    out += [w.as_dict() for w in checks.check_rules(data)
+            if w.where not in da_bao]
     ai_error = None
     if request.args.get("ai") in ("1", "true", "yes"):
         try:

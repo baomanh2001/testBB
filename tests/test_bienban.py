@@ -636,7 +636,7 @@ class TestAIEndpoints:
     def test_schema_endpoint(self, client):
         body = client.get("/api/ai/schema").get_json()
         assert body["ok"] is True
-        assert set(body["schema"]["forms"]) == {"44", "45", "46", "47", "48"}
+        assert set(body["schema"]["forms"]) == {"44", "45", "46", "47", "48", "49"}
         for form in body["schema"]["forms"].values():
             for g in form["groups"]:
                 assert "fields" in g or "table" in g
@@ -844,7 +844,7 @@ class TestUI:
             assert must in b45
 
     def test_every_template_field_is_editable(self):
-        """Mọi ô nhãn của 5 mẫu đều phải có input trong schema (để sửa được)."""
+        """Mọi ô nhãn của 6 mẫu đều phải có input trong schema (để sửa được)."""
         from bienban.schema import fields_of, tables_of
         from bienban.spec import LABELS
 
@@ -880,6 +880,10 @@ class TestUI:
                         "no_load": "khong_tai",
                         "short_circuit": "ngan_mach",
                         "voltage_test": "thu_dien_ap_tang_cao",
+                        # mẫu 49: các bảng 3 pha biểu diễn bằng ô/dãy số (như mẫu 44)
+                        "voltage_test_3p": "thu_dien_ap_tang_cao",
+                        "r_dc_3p": "r_cuon_day_1_chieu_ohm",
+                        "ratio_3p": "ti_so_bien_ap",
                     }
                     if it["table"] in series_prefix:
                         prefix = series_prefix[it["table"]]
@@ -887,7 +891,9 @@ class TestUI:
                         continue
                     # 45/46/47/48: bảng kết quả của Word tương ứng khoá dữ liệu chung "rows"
                     alias = {"insulation": "r_cach_dien_Mohm", "mccb": "rows",
-                             "la": "rows", "fco": "rows", "earth": "rows"}
+                             "la": "rows", "fco": "rows", "earth": "rows",
+                             # mẫu 49 (MBA 3 pha) dùng bảng riêng
+                             "insulation_3p": "r_cach_dien_Mohm"}
                     key = alias.get(it["table"], it["table"])
                     assert key in tables, (form, it["table"])
 
@@ -1203,6 +1209,17 @@ class TestCheckEndpoint:
 
         app.config.update(TESTING=True)
         return app.test_client()
+
+    def test_check_endpoint_reports_blocking_error(self, client):
+        """Số pha sai: /api/check phải nói rõ lỗi chặn, khớp với lý do /api/render từ chối."""
+        body = client.post("/api/check", json={
+            "bien_ban_49_mba_3p": {"so_pha": "01", "to_dau_day": "I/I0"}}).get_json()
+        assert body["ok"] is True
+        errs = [c for c in body["checks"] if c["level"] == "error"]
+        assert errs and errs[0]["form"] == "49"
+        assert "Số pha" in errs[0]["message"]
+        # không lặp lại cùng một chỗ hai lần
+        assert len([c for c in body["checks"] if c["where"].endswith(".so_pha")]) == 1
 
     def test_check_endpoint_rules_only(self, client, data):
         from bienban.vision import normalize_ai_result
@@ -2197,7 +2214,7 @@ class TestLauncher:
         rc = launcher.check()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Mẫu Word      : 5/5" in out
+        assert "Mẫu Word      : 6/6" in out
         assert "API key Gemini" in out
 
     def test_launcher_runs_server(self, launcher, monkeypatch):
@@ -2272,3 +2289,136 @@ class TestLauncher:
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
         assert ".env" in ignored
         assert (ROOT / ".env.example").exists()
+
+
+class TestForm49:
+    """Mẫu 49 – MÁY BIẾN ÁP 3 PHA (số liệu thật của biên bản 50921026/BB-TC)."""
+
+    DATA = {
+        "so_bien_ban": "50921026/BB-TC",
+        "hieu_may": "THIBIDI",
+        "cong_suat_dinh_muc": "1500",
+        "so_pha": "03",
+        "tan_so": "50",
+        "dien_ap_dinh_muc": "22/0,4",
+        "to_dau_day": "Dyn11",
+        "r_cach_dien_Mohm": {"rows": [
+            {"key": "cao_vo", "r60": "15300", "r15": "11300", "knt": "1,35"},
+            {"key": "cao_ha", "r60": "13700", "r15": "10200", "knt": "1,34"},
+            {"key": "ha_vo", "r60": "8200", "r15": "6200", "knt": "1,32"},
+        ]},
+        "r_cuon_day_1_chieu_ohm": {
+            "cao_ap": {
+                "ab": ["3,413", "3,332", "3,251", "3,169", "3,088"],
+                "bc": ["3,418", "3,336", "3,255", "3,174", "3,092"],
+                "ca": ["3,421", "3,339", "3,258", "3,177", "3,095"],
+            },
+            "ha_ap_mOhm": {"an": "0,885", "bn": "0,887", "cn": "0,889"},
+        },
+        "ti_so_bien_ap": {
+            "k1": ["57,759", "56,384", "55,019", "53,633", "52,258"],
+            "k2": ["57,763", "56,387", "55,012", "53,637", "52,261"],
+            "k3": ["57,764", "56,388", "55,013", "53,638", "52,262"],
+        },
+        "khong_tai": {"u0_V": "400", "i0_A": "5,19", "i0_pct": "0,24", "p0_W": "1210,3"},
+        "ngan_mach": {"uk_V": "1280,4", "uk_pct": "5,82", "ik_A": "39,36", "pk_W": "12423,3"},
+        "thu_dien_ap_tang_cao": {"cao_vo": "50", "ha_vo": "3", "thoi_gian": "1 phút"},
+    }
+
+    @pytest.fixture()
+    def out49(self, tmp_path):
+        from bienban.fill import render_all
+
+        data = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES, out_dir=tmp_path,
+                                    forms=["49"])
+        return paths, warnings
+
+    def _text(self, path):
+        d = docx.Document(str(path))
+        cells = [cell_text(tc) for t in d.tables for r in t.rows
+                 for tc in r._tr.findall(TC)]
+        return "\n".join(cells)
+
+    def test_renders_without_warnings(self, out49):
+        paths, warnings = out49
+        assert warnings == [], warnings
+        assert len(paths) == 1 and paths[0].name.startswith("49_")
+        assert paths[0].stat().st_size > 100_000
+
+    def test_table_shapes_are_three_phase(self, out49):
+        doc = docx.Document(str(out49[0][0]))
+        shapes = [(len(t.rows), len(t.columns)) for t in doc.tables]
+        # cách điện 4x4, R-DC 7x5 (2 hàng tiêu đề), tỉ số 6x4
+        assert (4, 4) in shapes
+        assert (7, 5) in shapes
+        assert (6, 4) in shapes
+
+    def test_values_land_in_the_right_cells(self, out49):
+        text = self._text(out49[0][0])
+        for must in ("Cao – Vỏ", "Cao – Hạ", "Hạ – Vỏ", "15300", "13700", "8200",
+                     "3,413", "3,421", "3,095", "57,759", "52,258", "52,262",
+                     "0,885", "0,889",
+                     "1210,3", "12423,3"):
+            assert must in text, f"thiếu {must!r} trong bảng"
+
+    def test_never_emits_one_phase_rows(self, out49):
+        text = self._text(out49[0][0])
+        for forbidden in ("Hạ 1", "Hạ 2", "(Cao + Vỏ) – Hạ", "ha_1", "ha_2"):
+            assert forbidden not in text, f"mẫu 49 không được có {forbidden!r}"
+
+    def test_schema_uses_series_not_fixed_rows(self):
+        from bienban.schema import fields_of
+
+        names = {f["key"] for f in fields_of("49")}
+        for name in ("r_cuon_day_1_chieu_ohm.cao_ap.ab",
+                     "r_cuon_day_1_chieu_ohm.cao_ap.bc",
+                     "r_cuon_day_1_chieu_ohm.cao_ap.ca",
+                     "r_cuon_day_1_chieu_ohm.ha_ap_mOhm.an",
+                     "ti_so_bien_ap.k1", "ti_so_bien_ap.k2", "ti_so_bien_ap.k3"):
+            assert name in names, f"thiếu ô {name}"
+
+    def test_clean_sample_has_no_check_warnings(self):
+        from bienban.checks import check_rules
+
+        assert check_rules({"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}) == []
+
+    def test_so_pha_mismatch_is_reported(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["so_pha"] = "01"
+        bad["bien_ban_49_mba_3p"]["to_dau_day"] = "I/I0"
+        msgs = [w.message for w in check_rules(bad)]
+        assert any("Số pha" in m for m in msgs)
+        assert any("1 pha" in m for m in msgs)
+
+    def test_phase_outlier_detected(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["r_cuon_day_1_chieu_ohm"]["cao_ap"]["bc"][2] = "9,900"
+        assert any("AB/BC/CA" in w.message for w in check_rules(bad))
+
+    def test_ratio_outlier_detected(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["ti_so_bien_ap"]["k3"][4] = "39,262"
+        assert any("K1/K2/K3" in w.message for w in check_rules(bad))
+
+    def test_r60_below_r15_detected(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["r_cach_dien_Mohm"]["rows"][0].update(
+            {"r60": "11300", "r15": "15300"})
+        assert any("R60" in w.message and "R15" in w.message for w in check_rules(bad))
+
+    def test_blank_49_does_not_block_generation(self, tmp_path):
+        paths, warnings = render_all({"bien_ban_49_mba_3p": {}},
+                                     templates_dir=TEMPLATES, out_dir=tmp_path,
+                                     forms=["49"])
+        assert len(paths) == 1
+        assert paths[0].exists()
+        assert all(w.level != "error" for w in warnings)

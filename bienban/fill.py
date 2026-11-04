@@ -660,6 +660,140 @@ def fill_voltage_test(doc, block: dict, cfg, log) -> list[str]:
     return []
 
 
+
+# --------------------------------------------------------------------------- #
+# Mẫu 49 – MÁY BIẾN ÁP 3 PHA
+# --------------------------------------------------------------------------- #
+#: 3 dòng cố định của bảng điện trở cách điện MBA 3 pha
+ROWS_3P_INSULATION = ("cao_vo", "cao_ha", "ha_vo")
+#: 3 pha của cuộn dây cao áp (mẫu in 3 cột AB / BC / CA)
+PHASES_3P = ("ab", "bc", "ca")
+
+
+def fill_insulation_3p(doc, block: dict, cfg, log) -> list[str]:
+    """Bảng 2 của mẫu 49: Cao – Vỏ / Cao – Hạ / Hạ – Vỏ (MBA 3 pha)."""
+    blank = cfg.get("empty_placeholder", "-")
+    t = _find_table(doc, "insulation_3p")
+    if t is None:
+        return ["Không tìm thấy bảng 'Điện trở cách điện' của MBA 3 pha (mục 2)"]
+    data = block.get("r_cach_dien_Mohm") or {}
+    rows_data = _rows_of(block, "r_cach_dien_Mohm")
+    if rows_data:
+        spec = table_spec("49", "r_cach_dien_Mohm") or {"columns": []}
+        for ri, row in enumerate(rows_data[:3], start=1):
+            if ri >= len(t.rows):
+                break
+            cells = t.rows[ri].cells
+            for ci, col in enumerate(spec["columns"], start=1):
+                if ci < len(cells):
+                    _put_force(cells[ci]._tc,
+                               _cell_value(col, row.get(col["key"]), blank))
+            log("    ✓ R cách điện {:<10}= {} | {} | {}".format(
+                row.get("key") or f"dòng {ri}",
+                norm_number(row.get("r60")), norm_number(row.get("r15")),
+                norm_number(row.get("knt"))))
+        return []
+    for ri, key in enumerate(ROWS_3P_INSULATION, start=1):
+        if ri >= len(t.rows):
+            break
+        item = data.get(key) or {}
+        cells = t.rows[ri].cells
+        for ci, field in enumerate(("r60", "r15", "knt"), start=1):
+            if ci < len(cells):
+                _put(cells[ci]._tc, norm_number(item.get(field)))
+        log("    ✓ R cách điện {:<10}= {} | {} | {}".format(
+            key, norm_number(item.get("r60")), norm_number(item.get("r15")),
+            norm_number(item.get("knt"))))
+    return []
+
+
+def fill_r_dc_3p(doc, block: dict, cfg, log) -> list[str]:
+    """Bảng 3 của mẫu 49: cuộn cao áp AB/BC/CA × 5 nấc + hạ áp an/bn/cn.
+
+    Bản in gộp 3 giá trị hạ áp vào **một ô** (``an: … bn: … cn: …``), khác mẫu
+    44 có 2 cột HA 1 / HA 2.
+    """
+    t = _find_table(doc, "r_dc_3p")
+    if t is None:
+        return ["Không tìm thấy bảng 'Điện trở một chiều cuộn dây' của MBA 3 pha (mục 3)"]
+    data = block.get("r_cuon_day_1_chieu_ohm") or {}
+    phases = data.get("cao_ap") or {}
+    if not isinstance(phases, dict):
+        phases = {}
+    # chấp nhận cả dạng phẳng: {"cao_ap": [...]} của mẫu 44
+    flat = data.get("cao_ap") if isinstance(data.get("cao_ap"), list) else None
+    for pi, phase in enumerate(PHASES_3P):
+        vals = phases.get(phase) or (flat if pi == 0 and flat else []) or []
+        for si, v in enumerate(list(vals)[:5]):
+            ri = (1 if len(t.rows) > 6 else 0) + si + 1
+            if ri >= len(t.rows):
+                break
+            cells = t.rows[ri].cells
+            if 1 + pi < len(cells) and v not in (None, ""):
+                _put(cells[1 + pi]._tc, norm_number(v))
+    ha = data.get("ha_ap_mOhm") or {}
+    if isinstance(ha, dict) and ha:
+        text = "\n".join(f"{k}: {norm_number(ha.get(k))}"
+                         for k in ("an", "bn", "cn") if ha.get(k) not in (None, ""))
+        if text:
+            target = t.rows[-1].cells
+            _put(target[-1]._tc, text)
+            log(f"    ✓ R một chiều hạ áp (mΩ)       = {text.replace(chr(10), ' | ')}")
+    for phase in PHASES_3P:
+        vals = phases.get(phase) or []
+        if vals:
+            log(f"    ✓ R một chiều CA pha {phase.upper():<8}= "
+                + ", ".join(norm_number(x) for x in vals[:5]))
+    return []
+
+
+def fill_ratio_3p(doc, block: dict, cfg, log) -> list[str]:
+    """Bảng 4 của mẫu 49: tỉ số K1 / K2 / K3 × 5 nấc."""
+    t = _find_table(doc, "ratio_3p")
+    if t is None:
+        return ["Không tìm thấy bảng 'Tỉ số biến áp' của MBA 3 pha (mục 4)"]
+    data = block.get("ti_so_bien_ap") or {}
+    for ki, key in enumerate(("k1", "k2", "k3")):
+        vals = data.get(key) or []
+        if not vals and ki == 0:
+            # dữ liệu cũ dùng ha_1 cho cột K1
+            vals = data.get("ha_1") or []
+        for si, v in enumerate(list(vals)[:5]):
+            ri = si + 1
+            if ri >= len(t.rows):
+                break
+            cells = t.rows[ri].cells
+            if 1 + ki < len(cells) and v not in (None, ""):
+                _put(cells[1 + ki]._tc, norm_number(v))
+        if vals:
+            log(f"    ✓ Tỉ số biến áp K{ki + 1:<10}= "
+                + ", ".join(norm_number(x) for x in list(vals)[:5]))
+    return []
+
+
+def fill_voltage_test_3p(doc, block: dict, cfg, log) -> list[str]:
+    """Bảng 7 của mẫu 49: Cao–(Hạ+vỏ) / Hạ–(Cao+vỏ)."""
+    t = _find_table(doc, "voltage_test_3p")
+    if t is None:
+        return ["Không tìm thấy bảng 'Thử điện áp tăng cao' của MBA 3 pha (mục 7)"]
+    d = block.get("thu_dien_ap_tang_cao") or {}
+    thoi_gian = norm_text(d.get("thoi_gian")
+                          or cfg["defaults"].get("thoi_gian_thu", "1 phút"))
+    # 3 pha ưu tiên khoá riêng; nếu ảnh chỉ ghi "cao áp"/"hạ áp" thì vẫn dùng
+    for ri, keys in ((1, ("cao_vo", "cao_ap")), (2, ("ha_vo", "ha_ap"))):
+        if ri >= len(t.rows):
+            break
+        val = next((d.get(k) for k in keys if d.get(k) not in (None, "")), None)
+        cells = t.rows[ri].cells
+        if val is not None and len(cells) > 1:
+            _put(cells[1]._tc, norm_number(val))
+        if len(cells) > 2:
+            _put(cells[2]._tc, thoi_gian)
+    log("    ✓ Thử điện áp tăng cao          Cao–(Hạ+vỏ)={} kV, Hạ–(Cao+vỏ)={} kV ({})"
+        .format(norm_number(d.get("cao_vo") or d.get("cao_ap")),
+                norm_number(d.get("ha_vo") or d.get("ha_ap")), thoi_gian))
+    return []
+
 TABLE_FILLERS: dict[str, Callable] = {
     "insulation": fill_insulation,
     "r_dc": fill_r_dc,
@@ -671,6 +805,10 @@ TABLE_FILLERS: dict[str, Callable] = {
     "no_load": fill_no_load,
     "short_circuit": fill_short_circuit,
     "voltage_test": fill_voltage_test,
+    "insulation_3p": fill_insulation_3p,
+    "r_dc_3p": fill_r_dc_3p,
+    "ratio_3p": fill_ratio_3p,
+    "voltage_test_3p": fill_voltage_test_3p,
 }
 
 
@@ -694,6 +832,7 @@ def build_conclusion(form: str, block: dict, data: dict, cfg: dict) -> str:
             "46": "chống sét van",
             "47": "FCO",
             "48": "điện trở nối đất",
+            "49": "máy biến áp 3 pha",
         }[form]
     template = (cfg.get("conclusions") or {}).get("default_template") or \
         "{qty} {device} trên đạt yêu cầu đóng điện vận hành"
@@ -761,7 +900,8 @@ def render_form(
     warnings += L.fill_labels(doc, LABELS[form], values, cfg, log)
 
     for key in ("insulation", "r_dc", "ratio", "no_load", "short_circuit",
-                "voltage_test", "mccb", "la", "fco", "earth"):
+                "voltage_test", "mccb", "la", "fco", "earth",
+                "insulation_3p", "r_dc_3p", "ratio_3p", "voltage_test_3p"):
         if any(item.get("table") == key for item in LABELS[form]):
             warnings += TABLE_FILLERS[key](doc, values, cfg, log)
 
