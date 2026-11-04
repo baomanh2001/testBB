@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Xem trước — {{ name }}</title>
+<style>
+  body{margin:0;background:#e9edf3;font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial,sans-serif}
+  .bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;justify-content:space-between;
+       padding:10px 18px;background:#0f172a;color:#e8eefc;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+  .bar b{font-size:14px;font-weight:600;word-break:break-all}
+  .bar a{background:linear-gradient(90deg,#0284c7,#0ea5e9);color:#04121f;text-decoration:none;
+         padding:8px 16px;border-radius:9px;font-weight:700;font-size:13px}
+  .wrap{padding:22px 10px 60px;overflow:auto}
+  {{ css|safe }}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <b>Xem trước: {{ name }}</b>
+    <a href="{{ download_url }}">⬇ Tải file .docx</a>
+  </div>
+  <div class="wrap">{{ body|safe }}</div>
+</body>
+</html>

@@ -283,11 +283,106 @@ class TestWeb:
         assert r.status_code == 200
         assert r.get_json()["ok"] is True
 
-    def test_render_and_download(self, client, data):
+    def test_render_ok(self, client, data):
         r = client.post("/api/render", json=data)
         body = r.get_json()
         assert body["ok"] is True
         assert len(body["files"]) == 5
-        z = client.post("/api/download", json={"data": data})
+        assert body["zip_url"].endswith("__all__.zip")
+
+
+# --------------------------------------------------------------------------- #
+# Xem trước HTML
+# --------------------------------------------------------------------------- #
+class TestPreview:
+    @pytest.fixture(scope="class")
+    @classmethod
+    def html(cls, tmp_path_factory):
+        import json as _json
+
+        from bienban.preview import docx_to_html
+
+        data = _json.loads(SAMPLE.read_text(encoding="utf-8"))
+        out_dir = tmp_path_factory.mktemp("preview")
+        paths, _ = render_all(data, templates_dir=TEMPLATES, out_dir=out_dir)
+        return {p.name.split("_")[0]: docx_to_html(p) for p in paths}
+
+    def test_has_tables_and_logo(self, html):
+        for form, h in html.items():
+            assert h.count("<table") >= 2, form
+            assert h.count("<img") == 1, f"{form}: phải có đúng 1 logo"
+
+    def test_numbers_present(self, html):
+        import html as _h
+
+        def text(form):
+            return _h.unescape(html[form])
+
+        assert "50441126/BB-TC" in text("44")
+        assert "04080968" in text("44")
+        assert "2760" in text("44") and "1,31" in text("44")
+        assert "273" in text("45") and ">5000" in text("45")
+        assert "3,52" in text("48")
+        assert "Nguyễn Trung Nghĩa" in text("45")
+
+    def test_merged_cells(self, html):
+        # bảng chữ ký / bảng số liệu có gộp ô -> phải có colspan hoặc rowspan
+        assert "colspan" in html["45"] or "rowspan" in html["45"]
+        assert "rowspan" in html["44"]
+
+    def test_no_floating_artifacts(self, html):
+        # dấu chìm (watermark) không được lọt vào ô chữ ký
+        assert html["45"].count("<img") == 1
+        assert "[LOGO]" not in html["45"]
+
+
+# --------------------------------------------------------------------------- #
+# Web API: xem trước + tải file
+# --------------------------------------------------------------------------- #
+class TestWebDownload:
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def test_render_returns_previews(self, client, data):
+        body = client.post("/api/render", json=data).get_json()
+        assert body["ok"] is True
+        assert body["token"]
+        assert len(body["files"]) == 5
+        assert set(body["previews"]) == set(body["files"])
+        for name, html in body["previews"].items():
+            assert "<table" in html, name
+            assert "doc-tbl" in html, name
+
+    def test_download_link_is_real_get(self, client, data):
+        """/api/render giờ trả link GET thật để iframe tải được (không dùng blob)."""
+        body = client.post("/api/render", json=data).get_json()
+        token = body["token"]
+        one = body["files"][1]
+        r = client.get(f"/download/{token}/{one}")
+        assert r.status_code == 200
+        assert r.data[:2] == b"PK"
+        assert "attachment" in r.headers["Content-Disposition"]
+        assert one in r.headers["Content-Disposition"]
+
+        z = client.get(f"/download/{token}/__all__.zip")
         assert z.status_code == 200
         assert z.data[:2] == b"PK"
+
+    def test_preview_page(self, client, data):
+        body = client.post("/api/render", json=data).get_json()
+        token, name = body["token"], body["files"][0]
+        r = client.get(f"/preview/{token}/{name}")
+        assert r.status_code == 200
+        page = r.get_data(as_text=True)
+        assert "doc-tbl" in page and "Xem trước" in page
+        assert f"/download/{token}/{name}" in page
+
+    def test_bad_token_404(self, client):
+        assert client.get("/download/khongtontai/x.docx").status_code == 404

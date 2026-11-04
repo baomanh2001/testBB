@@ -59,16 +59,32 @@ Kết quả trong `output/`:
 48_50481126BBTC.docx
 ```
 
-## 3. Web UI (dán JSON → tải file)
+## 3. Web UI (dán JSON → **xem trước** → tải file)
 
 ```bash
 ./.venv/bin/python web/app.py          # http://127.0.0.1:8000
 PORT=8080 ./.venv/bin/python web/app.py
 ```
 
-Giao diện cho phép: dán/ sửa JSON, **Kiểm tra** (báo lỗi + cảnh báo theo từng
-ô), **Sinh biên bản** (xem danh sách file), tải từng file hoặc tải tất cả
-`.zip`. Dữ liệu mẫu được nạp sẵn để thử ngay.
+Bấm **“Xem trước & sinh biên bản”** là thấy ngay **bản in** của từng biên bản
+đúng như file Word sẽ xuất ra (logo, bảng tiêu đề SỐ/NGÀY, đánh số I/II/III,
+bảng kẻ gộp ô, số liệu, chữ ký, footer) — soát xong mới tải file:
+
+* tab **44 … 48** để chuyển nhanh giữa 5 biên bản
+* nút **⬇ Tải** trên từng file, **⬇ Tải tất cả (.zip)**
+* **Tab riêng** mở bản xem trước toàn trang (in ra PDF được nếu cần)
+
+> Vì sao tải bằng link `/download/<token>/<file>` chứ không phải blob: trong
+> iframe preview (Arena, Zalo, Facebook…) nhiều trình duyệt chặn tải file sinh
+> ra bằng `URL.createObjectURL`. Link GET thật thì luôn tải được. File được
+> lưu tạm 6 giờ rồi tự dọn.
+
+Xem trước dùng được cả từ Python:
+
+```python
+from bienban.preview import docx_to_html
+html = docx_to_html("output/45_50451126BBTC.docx")   # khối HTML + logo base64
+```
 
 ## 4. JSON đầu vào
 
@@ -167,11 +183,12 @@ Bản .doc gốc được giữ tại `legacy/44 BB MBA 1P 50KVA.doc` để đ�
 ## 8. Kiểm thử
 
 ```bash
-./.venv/bin/python -m pytest -q      # 39 test
+./.venv/bin/python -m pytest -q      # 47 test
 ```
 
 Bao gồm: chuẩn hoá ngày/số, nhận dạng nhãn, nội dung từng biên bản 44–48,
-giữ header/footer + ảnh logo, chế độ in đậm/in hoa, validate dữ liệu và API web.
+giữ header/footer + ảnh logo, chế độ in đậm/in hoa, validate dữ liệu, dựng bản
+xem trước HTML (logo, gộp ô, số liệu) và API web (render / download / preview).
 
 ## 9. Cấu trúc thư mục
 
@@ -183,6 +200,7 @@ bienban/            # thư viện chính
   ooxml.py          #   thao tác XML Word (giữ định dạng gốc)
   fill.py           #   điều phối + điền bảng + chữ ký + kết luận
   validate.py       #   kiểm tra JSON trước khi điền
+  preview.py        #   dựng bản xem trước HTML từ file .docx
   __main__.py       #   CLI (fill / check / template / forms)
 templates/          # 5 mẫu Word đang dùng
 legacy/             # bản .doc gốc của mẫu 44

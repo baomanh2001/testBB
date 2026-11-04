@@ -13,37 +13,46 @@
   body{margin:0;font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial,sans-serif;
        background:radial-gradient(1200px 600px at 15% -10%,#1e3a5f 0%,var(--bg) 55%);
        color:var(--text);min-height:100vh}
-  header{padding:28px 32px 12px}
-  h1{margin:0;font-size:24px;letter-spacing:.2px}
-  header p{margin:6px 0 0;color:var(--muted);font-size:14px}
-  main{display:grid;grid-template-columns:1.25fr .95fr;gap:20px;padding:18px 32px 40px}
-  @media (max-width:1000px){main{grid-template-columns:1fr}}
+  header{padding:24px 30px 8px}
+  h1{margin:0;font-size:23px;letter-spacing:.2px}
+  header p{margin:6px 0 0;color:var(--muted);font-size:13.5px}
+  main{display:grid;grid-template-columns:minmax(380px,.85fr) minmax(520px,1.15fr);gap:18px;padding:16px 30px 40px}
+  @media (max-width:1100px){main{grid-template-columns:1fr}}
   .card{background:linear-gradient(180deg,var(--panel) 0%,var(--panel2) 100%);
-        border:1px solid var(--line);border-radius:14px;padding:16px}
-  .card h2{margin:0 0 10px;font-size:15px;color:var(--accent);letter-spacing:.4px;text-transform:uppercase}
-  textarea{width:100%;height:52vh;min-height:340px;resize:vertical;border-radius:10px;
-           border:1px solid var(--line);background:#0c1424;color:#dbe7ff;padding:12px;
+        border:1px solid var(--line);border-radius:14px;padding:14px}
+  .card h2{margin:0 0 10px;font-size:13.5px;color:var(--accent);letter-spacing:.4px;text-transform:uppercase}
+  textarea{width:100%;height:46vh;min-height:300px;resize:vertical;border-radius:10px;
+           border:1px solid var(--line);background:#0c1424;color:#dbe7ff;padding:11px;
            font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
-  button{cursor:pointer;border-radius:10px;border:1px solid var(--line);padding:10px 16px;
-         background:#132039;color:var(--text);font-size:13.5px;font-weight:600;transition:.15s}
-  button:hover{border-color:var(--accent);transform:translateY(-1px)}
-  button.primary{background:linear-gradient(90deg,#0284c7,#0ea5e9);border-color:transparent;color:#04121f}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  button,a.btn{cursor:pointer;border-radius:10px;border:1px solid var(--line);padding:9px 14px;
+         background:#132039;color:var(--text);font-size:13px;font-weight:600;transition:.15s;text-decoration:none;
+         display:inline-block}
+  button:hover,a.btn:hover{border-color:var(--accent);transform:translateY(-1px)}
+  button.primary,a.primary{background:linear-gradient(90deg,#0284c7,#0ea5e9);border-color:transparent;color:#04121f}
   button:disabled{opacity:.5;cursor:not-allowed;transform:none}
-  ul{list-style:none;margin:0;padding:0}
-  li.file{display:flex;justify-content:space-between;align-items:center;gap:10px;
-          padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#101b30}
-  li.file span{font-size:13px;word-break:break-all}
   .badge{font-size:11px;padding:2px 8px;border-radius:999px;background:#1d3357;color:var(--muted)}
-  .msg{padding:10px 12px;border-radius:10px;font-size:13px;margin-bottom:8px;line-height:1.45}
+  .msg{padding:9px 12px;border-radius:10px;font-size:12.8px;margin-bottom:8px;line-height:1.45}
   .msg.ok{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35)}
   .msg.warn{background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35)}
   .msg.err{background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.35)}
   .muted{color:var(--muted);font-size:12.5px;line-height:1.55}
-  .forms{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-  .forms div{font-size:12.5px;color:var(--muted)}
-  code{background:#0c1424;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px}
-  a{color:var(--accent)}
+  code{background:#0c1424;border:1px solid var(--line);border-radius:6px;padding:1px 5px;font-size:11.5px}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .tab{padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:#101b30;color:var(--muted);
+       font-size:12.5px;font-weight:600;cursor:pointer}
+  .tab.active{background:#0b2c47;color:#dff3ff;border-color:var(--accent)}
+  .frame{height:62vh;min-height:420px;border:1px solid var(--line);border-radius:10px;background:#eef1f6;overflow:hidden}
+  .frame iframe{width:100%;height:100%;border:0;background:#eef1f6}
+  .files{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px}
+  .file{display:flex;justify-content:space-between;align-items:center;gap:8px;
+        padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#101b30}
+  .file span{font-size:12.5px;word-break:break-all}
+  .file .acts{display:flex;gap:6px;flex-shrink:0}
+  .file button,.file a.btn{padding:6px 10px;font-size:12px}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
 </style>
 </head>
 <body>
@@ -57,58 +66,90 @@
     <h2>1. Dữ liệu JSON</h2>
     <textarea id="json" spellcheck="false"></textarea>
     <div class="row">
-      <button class="primary" id="btnRender">Sinh biên bản</button>
+      <button class="primary" id="btnRender">Xem trước &amp; sinh biên bản</button>
       <button id="btnCheck">Kiểm tra JSON</button>
       <button id="btnSample">Nạp dữ liệu mẫu</button>
-      <button id="btnDownload" disabled>Tải tất cả (.zip)</button>
+      <a class="btn" id="btnZip" style="display:none" href="#" download>⬇ Tải tất cả (.zip)</a>
     </div>
-    <p class="muted" style="margin-top:10px">
-      Cần đúng cấu trúc <code>thong_tin_chung</code> + <code>bien_ban_44_mba</code> …
-      <code>bien_ban_48_tiep_dat</code>. Ngày tự chuẩn hoá về <code>dd/mm/yyyy</code>,
-      số đo về dấu phẩy thập phân.
-    </p>
+    <p class="hint">Ngày tự chuẩn hoá về <code>dd/mm/yyyy</code>, số đo về dấu phẩy thập phân
+      (<code>3.52</code> → <code>3,52</code>), số máy/số tem chỉ giữ chữ số.</p>
   </section>
 
   <section class="card">
-    <h2>2. Kết quả</h2>
-    <div id="status"><p class="muted">Chưa có gì. Bấm “Sinh biên bản” để bắt đầu.</p></div>
-    <h2 style="margin-top:18px">Mẫu Word đang dùng</h2>
-    <div class="forms">
-      {% for f in forms %}
-      <div><span class="badge">{{ f.key }}</span> {{ f.title }} — <code>templates/{{ f.file }}</code></div>
-      {% endfor %}
+    <h2>2. Xem trước nội dung sẽ in</h2>
+    <div id="status"><p class="muted">Bấm “Xem trước &amp; sinh biên bản” để xem bản in trước khi tải file Word.</p></div>
+    <div id="tabs" class="tabs"></div>
+    <div id="frame" class="frame" style="display:none"><iframe id="ifr" title="Xem trước"></iframe></div>
+    <div id="filesWrap" style="display:none">
+      <h2 style="margin:14px 0 6px">3. Tải file Word</h2>
+      <div id="files" class="files"></div>
     </div>
   </section>
 </main>
 
 <script>
-const sample = {{ sample|tojson }};
+const SAMPLE = {{ sample|tojson }};
 const $ = (id) => document.getElementById(id);
-$("json").value = sample;
+$("json").value = SAMPLE;
 
-let lastData = null;
+let PREVIEWS = {};     // name -> html
+let TOKEN = null;
 
-function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-function renderProblems(list){
+function problemsHtml(list){
   if(!list || !list.length) return "";
-  return list.map(p=>`<div class="msg ${p.level==='error'?'err':'warn'}">
-     <b>${p.level==='error'?'Lỗi':'Cảnh báo'}</b> · <code>${esc(p.where)}</code><br>${esc(p.message)}</div>`).join("");
+  return list.map(p => `<div class="msg ${p.level==='error'?'err':'warn'}">
+      <b>${p.level==='error'?'Lỗi':'Cảnh báo'}</b> · <code>${esc(p.where)}</code><br>${esc(p.message)}</div>`).join("");
 }
 
 async function post(url, body){
   const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
-  return {status:r.status, data: await r.json()};
+  let data = {};
+  try { data = await r.json(); } catch(e) { data = {ok:false, error:"Máy chủ trả về dữ liệu không hợp lệ"}; }
+  return {status:r.status, data};
 }
 
-$("btnSample").onclick = () => { $("json").value = sample; };
+function showPreview(name){
+  const html = PREVIEWS[name];
+  if(!html) return;
+  $("frame").style.display = "block";
+  $("ifr").srcdoc = `<!doctype html><html lang="vi"><head><meta charset="utf-8">
+     <style>body{margin:0;background:#eef1f6;padding:14px 6px}${CSS}</style></head>
+     <body>${html}</body></html>`;
+  [...document.querySelectorAll(".tab")].forEach(t => t.classList.toggle("active", t.dataset.name === name));
+}
+
+const CSS = {{ css|tojson }};
+
+function buildTabs(files){
+  $("tabs").innerHTML = files.map((f,i) =>
+    `<div class="tab" data-name="${esc(f)}">${esc(f.split("_")[0])} · ${esc(f)}</div>`).join("");
+  [...document.querySelectorAll(".tab")].forEach(t =>
+    t.onclick = () => showPreview(t.dataset.name));
+}
+
+function buildFiles(files){
+  $("filesWrap").style.display = "block";
+  $("files").innerHTML = files.map(f => `<div class="file">
+      <span>📄 ${esc(f)}</span>
+      <span class="acts">
+        <button data-preview="${esc(f)}">Xem</button>
+        <a class="btn primary" href="/download/${TOKEN}/${encodeURIComponent(f)}" download>⬇ Tải</a>
+        <a class="btn" href="/preview/${TOKEN}/${encodeURIComponent(f)}" target="_blank" rel="noopener">Tab riêng</a>
+      </span></div>`).join("");
+  [...document.querySelectorAll("[data-preview]")].forEach(b =>
+    b.onclick = () => showPreview(b.dataset.preview));
+}
+
+$("btnSample").onclick = () => { $("json").value = SAMPLE; };
 
 $("btnCheck").onclick = async () => {
   let data;
   try { data = JSON.parse($("json").value); }
   catch(e){ $("status").innerHTML = `<div class="msg err">JSON sai cú pháp: ${esc(e.message)}</div>`; return; }
   const {data:res} = await post("/api/validate", data);
-  $("status").innerHTML = renderProblems(res.problems) ||
+  $("status").innerHTML = problemsHtml(res.problems) ||
      `<div class="msg ok">JSON hợp lệ. Sẽ sinh ${res.forms.length} biên bản: ${res.forms.join(", ")}</div>`;
 };
 
@@ -117,39 +158,27 @@ $("btnRender").onclick = async () => {
   try { data = JSON.parse($("json").value); }
   catch(e){ $("status").innerHTML = `<div class="msg err">JSON sai cú pháp: ${esc(e.message)}</div>`; return; }
   $("status").innerHTML = `<p class="muted">Đang sinh biên bản…</p>`;
+  $("btnRender").disabled = true;
   const {data:res} = await post("/api/render", data);
+  $("btnRender").disabled = false;
+
   if(!res.ok){
-    $("status").innerHTML = renderProblems(res.problems) ||
-      `<div class="msg err">${esc(res.error||"Có lỗi xảy ra")}</div>`;
-    $("btnDownload").disabled = true;
+    $("status").innerHTML = problemsHtml(res.problems) ||
+      `<div class="msg err">${esc(res.error || "Có lỗi xảy ra")}</div>`;
+    $("frame").style.display = "none"; $("filesWrap").style.display = "none";
+    $("btnZip").style.display = "none";
     return;
   }
-  lastData = data;
-  $("btnDownload").disabled = false;
-  const files = res.files.map(f=>`<li class="file"><span>📄 ${esc(f)}</span>
-      <button onclick="downloadOne('${esc(f)}')">Tải</button></li>`).join("");
-  $("status").innerHTML = `<div class="msg ok">Đã sinh ${res.files.length} biên bản.</div>
-     <ul>${files}</ul>` + renderProblems(res.warnings);
-};
 
-async function downloadOne(name){
-  if(!lastData) return;
-  const r = await fetch("/api/download", {method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({data:lastData, name})});
-  const blob = await r.blob();
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = name; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
-}
-
-$("btnDownload").onclick = async () => {
-  if(!lastData) return;
-  const r = await fetch("/api/download", {method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({data:lastData})});
-  const blob = await r.blob();
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "bien-ban-kdm.zip"; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  TOKEN = res.token;
+  PREVIEWS = res.previews || {};
+  $("status").innerHTML = `<div class="msg ok">Đã sinh ${res.files.length} biên bản — xem trước bên dưới rồi tải file.</div>`
+    + problemsHtml(res.warnings);
+  $("btnZip").style.display = "inline-block";
+  $("btnZip").href = res.zip_url;
+  buildTabs(res.files);
+  buildFiles(res.files);
+  showPreview(res.files[0]);
 };
 </script>
 </body>
