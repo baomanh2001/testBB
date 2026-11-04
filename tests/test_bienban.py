@@ -1267,6 +1267,164 @@ class TestCheckEndpoint:
         assert _LAST_IMAGES["blobs"]
 
 
+class TestAiFallback:
+    """Chuỗi AI dự phòng: model chính → model khác → key dự phòng (đều Gemini)."""
+
+    OK = {"candidates": [{"content": {"parts": [{"text": '{"ok": 1}'}]}}]}
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def calls(self, monkeypatch):
+        """Giả lập _request: ghi lại (model, key) và trả lỗi theo kịch bản."""
+        from bienban import vision
+
+        state = {"calls": [], "busy": {}, "fatal": set(), "busy_key": {}}
+
+        def fake(url, *, data=None, method="GET"):
+            model = url.split("/models/")[1].split(":")[0]
+            key = url.split("key=")[1]
+            state["calls"].append((model, key))
+            if model in state["fatal"]:
+                raise vision.GeminiFatal("ảnh hỏng")
+            # lỗi gắn với một cặp (model, key) cụ thể nếu có
+            if key in state["busy_key"]:
+                raise vision.GeminiBusy("bận", status=state["busy_key"][key])
+            if model in state["busy"]:
+                raise vision.GeminiBusy("bận", status=state["busy"][model])
+            return TestAiFallback.OK
+
+        monkeypatch.setattr(vision, "_request", fake)
+        return state
+
+    def test_main_model_works_no_fallback(self, calls):
+        from bienban.vision import call_gemini
+
+        out = call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                          fallbacks=["gemini-2.5-pro"])
+        assert out == {"ok": 1}
+        assert calls["calls"] == [("gemini-2.5-flash", "K1")]
+
+    @pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+    def test_busy_statuses_switch_model(self, calls, status):
+        from bienban.vision import call_gemini
+
+        calls["busy"]["gemini-2.5-flash"] = status
+        out = call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                          fallbacks=["gemini-2.5-pro"])
+        assert out == {"ok": 1}
+        assert [c[0] for c in calls["calls"]] == ["gemini-2.5-flash", "gemini-2.5-pro"]
+
+    def test_timeout_switches_model(self, calls):
+        from bienban import vision
+
+        state = calls
+
+        def fake(url, *, data=None, method="GET"):
+            model = url.split("/models/")[1].split(":")[0]
+            state["calls"].append((model, "K1"))
+            if model == "gemini-2.5-flash":
+                raise vision.GeminiBusy("timeout", status=408)
+            return TestAiFallback.OK
+
+        vision._request = fake
+        assert vision.call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                                  fallbacks=["gemini-2.5-pro"]) == {"ok": 1}
+
+    def test_backup_key_used_after_all_models_fail(self, calls):
+        from bienban.vision import call_gemini
+
+        calls["busy_key"]["K1"] = 429           # key chính hết hạn mức
+        out = call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                          fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
+        assert out == {"ok": 1}
+        # thử hết model với key chính, rồi mới sang key dự phòng
+        assert [c[1] for c in calls["calls"]] == ["K1", "K1", "K2"]
+        assert calls["calls"][-1] == ("gemini-2.5-flash", "K2")
+
+    def test_fatal_error_stops_immediately(self, calls):
+        from bienban.vision import GeminiFatal, call_gemini
+
+        calls["fatal"].add("gemini-2.5-flash")
+        with pytest.raises(GeminiFatal):
+            call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                        fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
+        assert len(calls["calls"]) == 1          # không tốn thêm lượt gọi
+
+    def test_all_fail_gives_clear_message(self, calls):
+        from bienban.vision import GeminiError, call_gemini
+
+        calls["busy_key"].update({"K1": 429, "K2": 503})
+        with pytest.raises(GeminiError) as exc:
+            call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                        fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
+        assert "phương án" in str(exc.value)
+
+    def test_on_try_reports_each_switch(self, calls):
+        from bienban.vision import call_gemini
+
+        calls["busy"]["gemini-2.5-flash"] = 503
+        seen = []
+        call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                    fallbacks=["gemini-2.5-pro"],
+                    on_try=lambda i, m, slot, exc: seen.append((i, m, slot)))
+        assert seen[0][1] == "gemini-2.5-flash" and seen[0][2] == "chính"
+
+    def test_duplicate_models_and_keys_not_retried(self, calls):
+        from bienban.vision import call_gemini
+
+        from bienban.vision import GeminiError
+
+        calls["busy"]["gemini-2.5-flash"] = 503
+        with pytest.raises(GeminiError):
+            call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
+                        fallbacks=["gemini-2.5-flash", "models/gemini-2.5-flash"],
+                        alt_keys=["K1"])
+        # 3 tên gọi cùng một model + 1 key trùng -> chỉ 1 lần gọi, không quay vòng
+        assert calls["calls"] == [("gemini-2.5-flash", "K1")], calls["calls"]
+
+    def test_defaults_from_config(self):
+        from bienban.fill import load_config
+
+        ai = load_config()["ai"]
+        assert ai["fallback_models"] and ai["fallback_models"][0] != "gemini-2.5-flash"
+
+    def test_recognize_reports_fallback(self, client, monkeypatch):
+        """Nếu phải chuyển phương án, phản hồi API nói rõ."""
+        import io
+
+        from bienban import vision
+
+        payload = {"thong_tin_chung": {"ten_cong_trinh": "X", "dia_chi": "Y", "don_vi_yeu_cau": "Z",
+                                       "ly_do_kiem_dinh": "Sau sự cố", "noi_kiem_dinh": "Tại hiện trường",
+                                       "ngay_kiem_dinh": "01/11/2026"},
+                   "reports": [{"report_type": "48", "data": {"so_bien_ban": "5048/BB-TC"}}]}
+
+        def fake(url, *, data=None, method="GET"):
+            model = url.split("/models/")[1].split(":")[0]
+            if model == "gemini-2.5-flash":
+                raise vision.GeminiBusy("quá tải", status=503)
+            return {"candidates": [{"content": {"parts": [
+                {"text": json.dumps(payload, ensure_ascii=False)}]}}]}
+
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        monkeypatch.setattr(vision, "_request", fake)
+        files = {"images": (io.BytesIO(b"\xff\xd8\xff" + b"0" * 80), "a.jpg")}
+        body = client.post("/api/ai/recognize", data=files,
+                           content_type="multipart/form-data").get_json()
+        assert body["ok"] is True
+        assert body["fallback"], body
+        assert "gemini-2.5-flash" in body["fallback"][0]
+
+
 class TestWatermark:
     """Hình nền chính thống: logo công ty làm dấu chìm trong mọi biên bản."""
 

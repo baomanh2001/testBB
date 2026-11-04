@@ -1049,6 +1049,9 @@ $("btnRecognize").onclick = async () => {
     const blocks = (d.blocks || []).map(b => b.replace("bien_ban_", ""));
     let html = `Đã đọc <b>${blocks.length} biên bản</b>: ${blocks.join(", ")}. ` +
                `Soát lại từng ô bên phải rồi bấm <b>Xem trước &amp; sinh biên bản</b>.`;
+    if(d.fallback && d.fallback.length)
+      html += `<br><b>Tự chuyển phương án:</b> ${d.fallback.map(esc).join(" → ")} ` +
+              `<span class="hint">(model/khoá chính đang bận nên tool tự đổi)</span>`;
     if(d.notes && d.notes.length)
       html += `<br><b>AI chưa chắc:</b> ${d.notes.map(esc).join("; ")}`;
     setAiStatus(html, d.notes && d.notes.length ? "warn" : "ok");

@@ -203,6 +203,12 @@ _MAX_CACHE_BYTES = 24 * 1024 * 1024          # 24 MB
 _MAX_CACHE_IMAGES = 8
 
 
+def _env_list(name: str) -> list[str]:
+    """Đọc danh sách phân tách bằng dấu phẩy trong biến môi trường."""
+    raw = os.environ.get(name) or ""
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
 def _remember_images(blobs: list[bytes]) -> None:
     keep, total = [], 0
     for b in blobs[:_MAX_CACHE_IMAGES]:
@@ -275,7 +281,13 @@ def api_ai_recognize():
     model = request.form.get("model") or vision.DEFAULT_MODEL
 
     try:
-        raw = vision.call_gemini(blobs, key=_gemini_key(), model=model, forms=forms)
+        cfg_ai = load_config().get("ai") or {}
+        tried: list[str] = []
+        raw = vision.call_gemini(
+            blobs, key=_gemini_key(), model=model, forms=forms,
+            fallbacks=cfg_ai.get("fallback_models") or _env_list("GEMINI_FALLBACK_MODELS"),
+            alt_keys=cfg_ai.get("fallback_keys") or _env_list("GEMINI_API_KEYS")[1:],
+            on_try=lambda i, m, slot, exc: tried.append(f"{m} (key {slot}): {exc}"))
         data = vision.normalize_ai_result(raw, forms=forms)
     except vision.GeminiError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -303,6 +315,8 @@ def api_ai_recognize():
         "problems": _problems_json(problems),
         # cảnh báo quy tắc ngay sau khi đọc ảnh (lớp AI là tuỳ chọn, gọi /api/check?ai=1)
         "checks": [w.as_dict() for w in checks.check_rules(data)],
+        # nếu phải chuyển phương án, nói rõ cho người dùng biết
+        "fallback": tried,
     })
 
 

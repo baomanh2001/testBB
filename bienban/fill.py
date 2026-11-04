@@ -72,6 +72,11 @@ DEFAULT_CONFIG = {
     "conclusions": {
         "default_template": "{qty} {device} trên đạt yêu cầu đóng điện vận hành",
     },
+    # Chuỗi AI dự phòng: model chính -> model khác -> key dự phòng (đều của Gemini)
+    "ai": {
+        "fallback_models": ["gemini-2.5-pro", "gemini-2.0-flash"],
+        "fallback_keys": [],          # có thể điền key thứ hai từ config.json
+    },
 }
 
 
