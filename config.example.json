@@ -1,0 +1,37 @@
+{
+  "_huong_dan": "Sao chép file này thành config.json rồi sửa. Mọi khoá đều tuỳ chọn; thiếu thì dùng giá trị mặc định trong bienban/fill.py",
+
+  "company": {
+    "name": "CÔNG TY CP THÍ NGHIỆM ĐIỆN TOÀN CẦU",
+    "code_suffix": "/BB-TC"
+  },
+
+  "style": {
+    "_giai_thich": "header_values: 'template' = giữ đúng định dạng mẫu (khuyến nghị, đúng biên bản công ty đang dùng) | 'bold_upper' = in đậm + in hoa phần giá trị của Tên công trình / Địa chỉ / Kết luận",
+    "header_values": "template",
+    "bold_header_values": false,
+    "upper_header_values": false,
+    "bold_values": false,
+    "upper_values": false
+  },
+
+  "empty_placeholder": "-",
+
+  "defaults": {
+    "tan_so": "50Hz",
+    "so_pha": "01",
+    "loai": "MCCB",
+    "nuoc_san_xuat": "Việt Nam",
+    "kiem_tra_ben_ngoai": "Bình thường",
+    "thoi_gian_thu": "1 phút",
+    "noi_kiem_dinh": "Tại hiện trường",
+    "ly_do_kiem_dinh": "Sau sự cố"
+  },
+
+  "conclusions": {
+    "_giai_thich": "Dùng khi JSON không có khoá ket_luan. {qty} = 'Một (01)', {device} = tên thiết bị",
+    "default_template": "{qty} {device} trên đạt yêu cầu đóng điện vận hành"
+  },
+
+  "forms": ["44", "45", "46", "47", "48"]
+}

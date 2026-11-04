@@ -1,0 +1,122 @@
+{
+  "_comment": "Dữ liệu trích từ 7 ảnh biên bản viết tay hiện trường + 1 ảnh công tơ (TBA 50kVA – DNTN E-GREEN, 01/11/2026). Đây là định dạng JSON chuẩn mà bước trích xuất ảnh phải xuất ra.",
+
+  "thong_tin_chung": {
+    "ten_cong_trinh": "Trạm biến áp 50kVA – DOANH NGHIỆP TƯ NHÂN E-GREEN",
+    "dia_chi": "Khu phố Gia Huỳnh, Phường Trảng Bàng, Tỉnh Tây Ninh, Việt Nam",
+    "don_vi_yeu_cau": "DOANH NGHIỆP TƯ NHÂN E-GREEN",
+    "ly_do_kiem_dinh": "Sau sự cố",
+    "noi_kiem_dinh": "Tại hiện trường",
+    "ngay_kiem_dinh": "01/11/2026",
+    "ngay_lap_bien_ban": "04/11/2026",
+    "can_bo_ky_ten": {
+      "nguoi_thu": "Nguyễn Trung Nghĩa",
+      "nguoi_kiem_tra": "Nguyễn Minh Quân",
+      "p_giam_doc": "Nguyễn Nhật Tân"
+    }
+  },
+
+  "cong_to_dien": {
+    "loai_cong_to": "Công tơ điện tử 1 pha nhiều giá",
+    "hieu": "Gelex Emic",
+    "kieu": "CE-14",
+    "so_san_xuat": "2410893750",
+    "don_vi_quan_ly": "Doanh nghiệp tư nhân E-GREEN"
+  },
+
+  "bien_ban_44_mba": {
+    "so_bien_ban": "50441126/BB-TC",
+    "hieu_may": "EMC",
+    "so_may": "04080968",
+    "so_tem": "017246",
+    "nam_san_xuat": "2004",
+    "cong_suat_dinh_muc": "50kVA",
+    "dien_ap_dinh_muc": "12,7/0,23kV",
+    "so_pha": "01",
+    "to_dau_day": "I/I0",
+    "kiem_tra_ben_ngoai": "Bình thường",
+    "r_cach_dien_Mohm": {
+      "cao_vo_ha1": {"r60": "2760", "r15": "2106", "knt": "1,31"},
+      "cao_vo_ha2": {"r60": "2550", "r15": "1902", "knt": "1,34"},
+      "ha1_ha2": {"r60": "1790", "r15": "1376", "knt": "1,30"}
+    },
+    "r_cuon_day_1_chieu_ohm": {
+      "cao_ap": ["16,42", "15,98", "15,57", "15,12", "14,67"],
+      "ha_ap_mOhm": ["8,32", "8,324"]
+    },
+    "ti_so_bien_ap": {
+      "ha_1": ["57,98", "56,59", "55,21", "53,83", "52,46"],
+      "ha_2": ["57,95", "56,57", "55,25", "53,87", "52,44"]
+    },
+    "khong_tai": {"u0_V": "230", "i0_A": "1,58", "i0_pct": "0,73", "p0_W": "97,6"},
+    "ngan_mach": {"uk_V": "304,7", "uk_pct": "2,4", "ik_A": "3,94", "pk_W": "563,2"},
+    "thu_dien_ap_tang_cao": {"cao_ap": "50", "ha_ap": "3", "thoi_gian": "1 phút"},
+    "ket_luan": "Máy biến áp 1 pha trên đạt yêu cầu đóng điện vận hành."
+  },
+
+  "bien_ban_45_mccb": {
+    "so_bien_ban": "50451126/BB-TC",
+    "hieu": "MITSUBISHI",
+    "loai": "MCCB",
+    "kieu": "NF-250",
+    "dong_dinh_muc": "250A",
+    "so_cuc": "03",
+    "so_luong": "01",
+    "so_tem": "017215",
+    "chi_danh": "MCCB 250A",
+    "dien_ap_dinh_muc": "-",
+    "dong_ngan_mach_toi_da": "-",
+    "dien_ap_cach_dien": "-",
+    "dien_ap_xung": "-",
+    "kiem_tra_ben_ngoai": "Bình thường",
+    "r_cach_dien_Mohm": {"close": ">5000", "open": ">5000"},
+    "r_tiep_xuc_uohm": {"pha_a": "273", "pha_b": "275", "pha_c": "279"},
+    "u_test_kV": "3",
+    "dong_cat_s": "5",
+    "ket_qua": "Đạt",
+    "ket_luan": "01 máy cắt hạ thế (MCCB) trên đạt yêu cầu đóng điện vận hành."
+  },
+
+  "bien_ban_46_la": {
+    "so_bien_ban": "50461126/BB-TC",
+    "chi_danh": "LA 18kV-10kA",
+    "vat_lieu": "Polymer",
+    "dien_ap_dinh_muc": "18kV",
+    "mcov": "15,3kV",
+    "dong_xa_toi_da": "10 kA",
+    "so_luong": "01",
+    "kiem_tra_ben_ngoai": "Bình thường",
+    "ket_qua_thu_nghiem": [["LA 01", ">10000", "17", "35"]],
+    "r_cach_dien_Mohm": ">10000",
+    "dong_ro_uA": "17",
+    "u_ac_tang_cao_kV": "35",
+    "ket_qua": "Đạt",
+    "ket_luan": "Một (01) chống sét van trên đạt yêu cầu đóng điện vận hành"
+  },
+
+  "bien_ban_47_fco": {
+    "so_bien_ban": "50471126/BB-TC",
+    "chi_danh": "FCO – 100A",
+    "vat_lieu": "Sứ",
+    "dien_ap_dinh_muc": "27kV",
+    "dong_dinh_muc": "100A",
+    "kha_nang_cat_ngan_mach": "12kA",
+    "so_luong": "01",
+    "kiem_tra_ben_ngoai": "Bình thường",
+    "ket_qua_thu_nghiem": [["FCO 01", ">10000", ">10000", "60", "50", "5", "Đạt"]],
+    "r_cach_dien_Mohm": {"truoc_thu": ">10000", "sau_thu": ">10000"},
+    "u_ac_tang_cao_kV": {"kho": "60", "uot": "50"},
+    "dong_cat_s": "5",
+    "ket_qua": "Đạt",
+    "ket_luan": "Một (01) FCO trên đạt yêu cầu đóng điện vận hành"
+  },
+
+  "bien_ban_48_tiep_dat": {
+    "so_bien_ban": "50481126/BB-TC",
+    "chi_danh": "Điện trở nối đất trạm biến áp",
+    "ket_noi_trung_tinh": "Có",
+    "loai_tiep_dat": "Làm việc",
+    "gia_tri_do_Ohm": "3,52",
+    "thiet_bi_do": "KEW 4105DL"
+  }
+}

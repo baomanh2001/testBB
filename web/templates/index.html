@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nhận dạng ảnh &amp; điền biên bản kiểm định 44–48</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brandmark">
+      {% if logo %}<img src="{{ logo }}" alt="Logo công ty" />{% endif %}
+    </div>
+    <div class="brandtext">
+      <div class="co">Công ty CP Thí nghiệm Điện Toàn Cầu</div>
+      <h1>Biên bản kiểm định điện lực 44–48</h1>
+      <p>Chụp ảnh biên bản viết tay → AI đọc → soát lại từng ô → in Word</p>
+    </div>
+    <div class="spacer"></div>
+    <span class="chip" id="aiChip"><span class="dot" id="aiDot"></span><span id="aiChipText">Đang kiểm tra…</span></span>
+    <button class="toggle" id="btnBig" aria-pressed="false" title="Tăng cỡ chữ khi dùng ngoài hiện trường">A+</button>
+    <a class="chip" href="#help">Hướng dẫn</a>
+  </div>
+</header>
+
+<nav class="stepper" aria-label="Các bước">
+  <div class="wrap">
+    <div class="step now" id="step1"><span class="n"><span>1</span></span>Chọn ảnh</div>
+    <div class="sep"></div>
+    <div class="step" id="step2"><span class="n"><span>2</span></span>Soát &amp; sửa dữ liệu</div>
+    <div class="sep"></div>
+    <div class="step" id="step3"><span class="n"><span>3</span></span>Xem trước &amp; tải Word</div>
+  </div>
+</nav>
+
+<main class="wrap">
+<div class="grid">
+
+  <!-- ================= CỘT TRÁI: ảnh + AI ================= -->
+  <div class="col">
+    <section class="card">
+      <div class="head">
+        <span class="k">1</span><h2>Ảnh biên bản</h2>
+        <span class="sub" id="imgCount">chưa có ảnh</span>
+      </div>
+      <div class="body">
+        <div class="drop" id="drop" tabindex="0" role="button"
+             aria-label="Chọn ảnh biên bản">
+          <span class="ico">🖼️</span>
+          <div class="big">Kéo–thả ảnh vào đây, hoặc bấm để chọn</div>
+          <div class="small" id="dropHint">JPG/PNG, tối đa {{ max_images }} ảnh mỗi lần · chụp nhiều tờ một lúc cũng được</div>
+          <input type="file" id="file" accept="image/*" multiple hidden />
+        </div>
+        <div class="thumbs" id="thumbs"></div>
+        <div class="row tight" id="imgActions" style="display:none">
+          <button class="ghost small" id="btnClear">Xoá hết ảnh</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <span class="k">2</span><h2>Nhận dạng bằng Gemini</h2>
+        <span class="sub" id="keyState"></span>
+      </div>
+      <div class="body">
+        <div class="field">
+          <label class="lbl" for="key">API key Gemini <span class="opt" id="keyOpt">— dán key, hoặc để trống nếu server đã có</span></label>
+          <input type="password" id="key" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="field">
+          <label class="lbl" for="model">Model</label>
+          <select id="model"></select>
+          <div class="hint">Bấm “Danh sách model” để lấy các model key của bạn dùng được.</div>
+        </div>
+        <div class="row">
+          <button class="ghost small" id="btnModels">↻ Danh sách model</button>
+          <button class="ghost small" id="btnPrompt">Xem prompt gửi AI</button>
+        </div>
+        <div class="btnrow">
+          <button class="primary grow" id="btnRecognize">✨ Nhận dạng ảnh → điền form</button>
+        </div>
+        <div id="aiStatus"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <span class="k">⌨</span><h2>Nhập tay / JSON</h2>
+      </div>
+      <div class="body">
+        <p class="hint" style="margin-top:0">
+          Không có ảnh vẫn dùng được: dán JSON sẵn có, hoặc thêm biên bản trống rồi gõ tay.
+        </p>
+        <div class="row">
+          <button class="small" id="btnSample">Nạp dữ liệu mẫu</button>
+          <button class="small" id="btnAddForm">+ Thêm biên bản</button>
+          <button class="small" id="btnDownloadJson">⬇ Tải .json</button>
+        </div>
+        <details class="json">
+          <summary>JSON đã nhận dạng <span class="opt" style="font-weight:500;color:var(--muted)">(sửa trực tiếp được)</span></summary>
+          <div class="jbody">
+            <textarea id="json" spellcheck="false" aria-label="JSON dữ liệu"></textarea>
+            <div class="row tight">
+              <button class="small primary" id="btnJsonApply">Áp JSON vào form</button>
+              <button class="small" id="btnCopy">Sao chép</button>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= CỘT PHẢI: form + preview ================= -->
+  <div class="col">
+    <section class="card">
+      <div class="head">
+        <span class="k">2</span><h2>Soát &amp; sửa dữ liệu</h2>
+        <span class="sub">mọi ô đều sửa được · thêm/xoá dòng được</span>
+      </div>
+      <div class="body">
+        <div class="tabs" id="tabs"></div>
+        <div class="sticky" id="sticky" style="display:none">
+          <button class="primary" id="btnRender">Xem trước &amp; sinh biên bản</button>
+          <button id="btnValidate">Kiểm tra dữ liệu</button>
+          <span class="info" id="formInfo"></span>
+        </div>
+        <div id="status"></div>
+        <div id="editor"></div>
+      </div>
+    </section>
+
+    <section class="card" id="previewCard" style="display:none">
+      <div class="head">
+        <span class="k">3</span><h2>Xem trước bản in</h2>
+        <span class="sub">đúng như file Word sẽ xuất ra</span>
+      </div>
+      <div class="body">
+        <div class="tabs" id="previewTabs"></div>
+        <div class="frame"><iframe id="ifr" title="Xem trước biên bản"></iframe></div>
+        <div class="subhead">Tải file Word</div>
+        <div id="files" class="files"></div>
+        <div class="btnrow">
+          <a class="btn primary" id="btnZip" style="display:none" href="#" download>⬇ Tải tất cả (.zip)</a>
+          <button id="btnPrint" title="In hoặc lưu PDF bản xem trước hiện tại">🖨 In / PDF</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ================= HƯỚNG DẪN ================= -->
+<section class="card" id="help" style="margin-top:20px">
+  <div class="head"><span class="k">?</span><h2>Hướng dẫn nhanh</h2></div>
+  <div class="body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">
+    <div>
+      <h3 style="margin:0 0 6px;font-size:13px">1 · Chụp ảnh</h3>
+      <p class="hint" style="margin:0">
+        Chụp thẳng tờ biên bản, đủ sáng, thấy rõ cả bảng số liệu và chữ ký.
+        Một tờ chụp 2 ảnh (nửa trên/nửa dưới) vẫn được — AI tự gộp lại.
+      </p>
+    </div>
+    <div>
+      <h3 style="margin:0 0 6px;font-size:13px">2 · Soát lại</h3>
+      <p class="hint" style="margin:0">
+        Chữ viết tay hay bị đọc nhầm ở số 0/1 và dấu phẩy. Những chỗ AI chưa chắc
+        sẽ hiện ghi chú màu vàng — sửa ngay trên form. Thiếu dòng thì bấm
+        <b>+ Thêm dòng</b>.
+      </p>
+    </div>
+    <div>
+      <h3 style="margin:0 0 6px;font-size:13px">3 · In</h3>
+      <p class="hint" style="margin:0">
+        Bấm <b>Xem trước &amp; sinh biên bản</b> để xem bản in, rồi tải từng file
+        .docx hoặc cả .zip. Bản in giữ đúng mẫu của công ty.
+      </p>
+    </div>
+  </div>
+</section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h3>Prompt gửi Gemini</h3>
+    <p>Prompt này sinh tự động từ đặc tả biểu mẫu, nên khoá và nhãn luôn khớp với form bên phải.</p>
+    <textarea id="promptText" readonly></textarea>
+    <div class="btnrow"><button id="btnCloseModal">Đóng</button></div>
+  </div>
+</div>
+
+<script>
+const SCHEMA = {{ schema|tojson }};
+const SAMPLE = {{ sample|tojson }};
+const CSS = {{ css|tojson }};
+const DEFAULT_MODEL = {{ default_model|tojson }};
+const MAX_IMAGES = {{ max_images }};
+let ENV_KEY = false;
+
+const $ = (id) => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+let DATA = {};
+let ACTIVE = null;
+let IMAGES = [];
+let TOKEN = null, PREVIEWS = {}, DIRTY = false;
+
+const FORM_KEYS = Object.keys(SCHEMA.forms).sort();
+const DATA_KEY = {44:"44_mba",45:"45_mccb",46:"46_la",47:"47_fco",48:"48_tiep_dat"};
+function dataKey(form){ return "bien_ban_" + DATA_KEY[form]; }
+function formHasData(form){
+  const b = DATA[dataKey(form)];
+  return !!b && Object.keys(b).length > 0;
+}
+function getPath(obj, path){
+  let cur = obj;
+  for(const p of path){ if(cur == null) return ""; cur = cur[p]; }
+  return cur == null ? "" : cur;
+}
+function setPath(obj, path, value){
+  let cur = obj;
+  for(let i=0;i<path.length-1;i++){
+    const p = path[i];
+    if(typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
+    cur = cur[p];
+  }
+  cur[path[path.length-1]] = value;
+  syncJson(); markDirty();
+}
+function rowsOf(block, table){
+  if(!block) return [];
+  const v = block[table.key];
+  if(v == null) return [];
+  if(Array.isArray(v)) return v;
+  return Array.isArray(v.rows) ? v.rows : [];
+}
+function setRows(block, table, rows){
+  block[table.key] = {rows};
+  if(table.sync_so_luong && block[table.sync_so_luong] !== undefined)
+    block[table.sync_so_luong] = String(rows.length).padStart(2,"0");
+  syncJson(); markDirty();
+}
+function ensureBlock(form){
+  const k = dataKey(form);
+  if(typeof DATA[k] !== "object" || DATA[k] === null) DATA[k] = {};
+  return DATA[k];
+}
+
+/* ---------------- stepper ---------------- */
+function setStep(n){
+  [1,2,3].forEach(i => {
+    const el = $("step"+i);
+    el.classList.toggle("now", i === n);
+    el.classList.toggle("done", i < n);
+  });
+}
+
+/* ---------------- cảnh báo ---------------- */
+function alertHtml(cls, ic, html){
+  return `<div class="alert ${cls}"><span class="ic">${ic}</span><div>${html}</div></div>`;
+}
+function problemsHtml(list){
+  if(!list || !list.length) return "";
+  const errs = list.filter(p => p.level === "error");
+  const warns = list.filter(p => p.level !== "error");
+  let out = "";
+  if(errs.length){
+    out += alertHtml("err", "✕", `<b>${errs.length} lỗi cần sửa</b><ul>` +
+      errs.slice(0,8).map(p => `<li><code>${esc(p.where)}</code> — ${esc(p.message)}</li>`).join("") +
+      `</ul>`);
+  }
+  if(warns.length){
+    out += alertHtml("warn", "!", `<b>${warns.length} cảnh báo</b><ul>` +
+      warns.slice(0,6).map(p => `<li><code>${esc(p.where)}</code> — ${esc(p.message)}</li>`).join("") +
+      `</ul>`);
+  }
+  return out;
+}
+function setAiStatus(html, cls, ic){
+  const icons = {ok:"✓", warn:"!", err:"✕", info:"i"};
+  $("aiStatus").innerHTML = html
+    ? alertHtml(cls || "info", ic || icons[cls] || "i", html) : "";
+}
+
+/* ---------------- tabs ---------------- */
+function renderTabs(){
+  $("tabs").innerHTML = FORM_KEYS.map(f => `
+    <div class="tab ${f===ACTIVE?"active":""}" data-form="${f}" role="tab" tabindex="0">
+      <span class="dot ${formHasData(f)?"on":""}"></span>
+      <span class="num">${f}</span> ${esc(SCHEMA.forms[f].title)}
+    </div>`).join("");
+  [...document.querySelectorAll(".tab[data-form]")].forEach(t => {
+    t.onclick = () => { ACTIVE = t.dataset.form; renderTabs(); renderEditor(); };
+    t.onkeydown = e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); t.click(); } };
+  });
+  updateFormInfo();
+}
+function updateFormInfo(){
+  const have = FORM_KEYS.filter(formHasData).length;
+  $("formInfo").innerHTML = ACTIVE
+    ? `Đang sửa <b>mẫu ${ACTIVE}</b> · ${have}/${FORM_KEYS.length} biên bản có dữ liệu`
+    : "";
+}
+
+/* ---------------- form ---------------- */
+function fieldHtml(f, path, value, wide){
+  const id = "f_" + path.join("_");
+  const hint = f.hint ? `<div class="hint">${esc(f.hint)}</div>` : "";
+  const unit = f.unit ? ` <span class="opt">(${esc(f.unit)})</span>` : "";
+  const label = `<label class="lbl" for="${id}">${esc(f.label)}${unit}</label>`;
+  let inp;
+  if(f.type === "select"){
+    const val = value == null ? "" : String(value);
+    const opts = (f.options || []).slice();
+    if(val && !opts.includes(val)) opts.unshift(val);
+    inp = `<select id="${id}" data-path="${esc(path.join("|"))}">
+             <option value="">— chọn —</option>
+             ${opts.map(o => `<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}
+           </select>`;
+  } else if(f.type === "textarea"){
+    inp = `<textarea id="${id}" rows="2" data-path="${esc(path.join("|"))}">${esc(value)}</textarea>`;
+  } else if(f.type === "series"){
+    const n = f.len || 5;
+    const arr = Array.isArray(value) ? value : [];
+    const names = f.itemLabels || [];
+    inp = `<div class="series" role="group" aria-label="${esc(f.label)}">` +
+      Array.from({length:n}, (_, i) =>
+        `<input type="text" data-path="${esc(path.join("|"))}" data-idx="${i}"
+                value="${esc(arr[i] ?? "")}" placeholder="${esc(names[i] || ("nấc " + (i+1)))}"
+                aria-label="${esc(f.label)} – ${esc(names[i] || ("nấc " + (i+1)))}" />`).join("") +
+      `</div>`;
+  } else {
+    inp = `<input type="text" id="${id}" value="${esc(value)}" data-path="${esc(path.join("|"))}"
+            ${f.type==="code"?'inputmode="numeric"':''} />`;
+  }
+  return `<div class="${wide?"wide":""}">${label}${inp}${hint}</div>`;
+}
+
+function tableHtml(table, block){
+  const rows = rowsOf(block, table);
+  const cols = table.columns || [];
+  const head = (table.stt ? "<th>STT</th>" : "") +
+    cols.map(c => `<th>${esc(c.label)}</th>`).join("") + "<th></th>";
+  let body = "";
+  if(table.kind === "fixed"){
+    (table.rows || []).forEach((r, i) => {
+      const row = rows.find(x => x.key === r.key) || rows[i] || {};
+      body += `<tr><td class="fixname">${esc(r.label)}</td>` +
+        cols.map(c => `<td><input type="text" data-fix="${esc(r.key)}" data-k="${esc(c.key)}"
+            value="${esc(row[c.key] ?? "")}" aria-label="${esc(r.label)} ${esc(c.label)}" /></td>`).join("") +
+        `<td></td></tr>`;
+    });
+  } else {
+    rows.forEach((row, i) => {
+      body += `<tr>${table.stt?`<td class="stt">${esc(row.stt || i+1)}</td>`:""}` +
+        cols.map(c => {
+          const val = row[c.key] ?? "";
+          if(c.type === "select"){
+            const opts = (c.options || []).slice();
+            if(val && !opts.includes(val)) opts.unshift(val);
+            return `<td><select data-row="${i}" data-k="${esc(c.key)}" aria-label="${esc(c.label)} dòng ${i+1}">
+              <option value=""></option>${opts.map(o=>`<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}
+            </select></td>`;
+          }
+          return `<td><input type="text" data-row="${i}" data-k="${esc(c.key)}"
+                   value="${esc(val)}" aria-label="${esc(c.label)} dòng ${i+1}" /></td>`;
+        }).join("") +
+        `<td class="act">${table.addable?`<button class="ghost small" data-delrow="${i}"
+            title="Xoá dòng ${i+1}" aria-label="Xoá dòng ${i+1}">✕</button>`:""}</td></tr>`;
+    });
+    if(!rows.length){
+      body = `<tr><td colspan="${cols.length + (table.stt?1:0) + 1}" class="empty">
+        Chưa có dòng nào — bấm “+ Thêm dòng”.</td></tr>`;
+    }
+  }
+  return `<div class="group">
+      <h3>${esc(table.title || "")}${table.addable?`<span class="badge">${rows.length} dòng</span>`:""}</h3>
+      <div class="gbody">
+        <div class="tblwrap"><table class="tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+        ${table.addable?`<div class="btnrow"><button class="small" data-addrow="1">+ Thêm dòng</button></div>`:""}
+      </div>
+    </div>`;
+}
+
+function renderEditor(){
+  const form = ACTIVE;
+  if(!form){ $("editor").innerHTML = ""; $("sticky").style.display = "none"; return; }
+  $("sticky").style.display = "flex";
+  updateFormInfo();
+
+  let html = "";
+  const common = SCHEMA.common;
+  html += `<div class="group">
+      <h3>${esc(common.title)}</h3>
+      <div class="gbody"><div class="flds">` +
+    common.fields.map(f => fieldHtml(f, f.path, getPath(DATA, f.path), f.type === "text")).join("") +
+    `</div></div></div>`;
+
+  SCHEMA.forms[form].groups.forEach(g => {
+    if(g.table){
+      html += tableHtml(Object.assign({}, g.table, {title: g.title}), DATA[dataKey(form)]);
+      return;
+    }
+    html += `<div class="group"><h3>${esc(g.title)}</h3><div class="gbody"><div class="flds">` +
+      g.fields.map(f => {
+        const p = f.path || f.key.split(".");
+        return fieldHtml(f, ["__block", form].concat(p), getPath(DATA[dataKey(form)] || {}, p),
+                         f.type === "textarea");
+      }).join("") + `</div></div></div>`;
+  });
+  $("editor").innerHTML = html;
+  bindEditor();
+}
+
+function bindEditor(){
+  const ed = $("editor");
+  // ô đơn
+  ed.querySelectorAll("[data-path]").forEach(inp => {
+    const handler = () => {
+      const path = inp.dataset.path.split("|");
+      let value = inp.value;
+      if(inp.dataset.idx !== undefined){
+        const sel = `[data-path="${inp.dataset.path}"][data-idx]`;
+        value = [...ed.querySelectorAll(sel)].map(x => x.value);
+      }
+      if(path[0] === "__block") setPath(ensureBlock(path[1]), path.slice(2), value);
+      else setPath(DATA, path, value);
+    };
+    inp.addEventListener("input", handler);
+    inp.addEventListener("change", handler);
+  });
+  // dòng bảng
+  ed.querySelectorAll("[data-row]").forEach(inp => {
+    const handler = () => {
+      const table = currentTable(inp);
+      const rows = rowsOf(ensureBlock(ACTIVE), table);
+      const i = Number(inp.dataset.row);
+      if(rows[i]){ rows[i][inp.dataset.k] = inp.value; syncJson(); markDirty(); }
+    };
+    inp.addEventListener("input", handler);
+    inp.addEventListener("change", handler);
+  });
+  // bảng cố định
+  ed.querySelectorAll("[data-fix]").forEach(inp => {
+    const handler = () => {
+      const table = currentTable(inp);
+      const block = ensureBlock(ACTIVE);
+      setRows(block, table, ensureFixed(block, table));
+      const rows = rowsOf(block, table);
+      const row = rows.find(r => r.key === inp.dataset.fix);
+      if(row){ row[inp.dataset.k] = inp.value; syncJson(); markDirty(); }
+    };
+    inp.addEventListener("input", handler);
+  });
+  // thêm / xoá dòng
+  ed.querySelectorAll("[data-addrow]").forEach(b => {
+    b.onclick = () => {
+      const table = currentTable(b);
+      const block = ensureBlock(ACTIVE);
+      const rows = rowsOf(block, table).slice();
+      rows.push(Object.assign({stt: String(rows.length + 1)}, table.new_row || {}));
+      setRows(block, table, rows);
+      renderTabs(); renderEditor();
+    };
+  });
+  ed.querySelectorAll("[data-delrow]").forEach(b => {
+    b.onclick = () => {
+      const table = currentTable(b);
+      const block = ensureBlock(ACTIVE);
+      const rows = rowsOf(block, table).slice();
+      if(rows.length <= 1){
+        setAiStatus("Cần giữ lại ít nhất 1 dòng kết quả.", "warn");
+        return;
+      }
+      rows.splice(Number(b.dataset.delrow), 1);
+      rows.forEach((r, i) => { if(table.stt) r.stt = String(i + 1); });
+      setRows(block, table, rows);
+      renderTabs(); renderEditor();
+    };
+  });
+}
+
+function currentTable(el){
+  const title = el.closest(".group").querySelector("h3").textContent.trim();
+  for(const g of SCHEMA.forms[ACTIVE].groups){
+    if(g.table && (title.startsWith(g.title) || g.title.startsWith(title))) 
+      return Object.assign({}, g.table, {title: g.title});
+  }
+  return {};
+}
+function ensureFixed(block, table){
+  const rows = rowsOf(block, table).slice();
+  (table.rows || []).forEach(r => { if(!rows.find(x => x.key === r.key)) rows.push({key: r.key}); });
+  return rows;
+}
+
+/* ---------------- JSON ---------------- */
+function syncJson(){ $("json").value = JSON.stringify(DATA, null, 2); }
+let LOAD_SEQ = 0;
+async function loadData(data){
+  const seq = ++LOAD_SEQ;
+  let d = data || {};
+  try{
+    const r = await fetch("/api/normalize", {method:"POST", headers:{"Content-Type":"application/json"},
+                                             body: JSON.stringify(d)});
+    const res = await r.json();
+    if(res.ok && res.data) d = res.data;
+  }catch(e){ /* offline: dùng dữ liệu gốc */ }
+  if(seq !== LOAD_SEQ) return DATA;
+  if(d._ai) delete d._ai;
+  DATA = d;
+  const present = FORM_KEYS.filter(formHasData);
+  ACTIVE = present[0] || ACTIVE || FORM_KEYS[0];
+  renderTabs(); renderEditor(); syncJson();
+  return DATA;
+}
+function markDirty(){
+  if(TOKEN && !DIRTY){
+    DIRTY = true;
+    $("status").innerHTML = alertHtml("warn", "!", 
+      "Dữ liệu vừa thay đổi — bấm <b>Xem trước &amp; sinh biên bản</b> để cập nhật bản in.");
+  }
+}
+
+/* ---------------- ảnh ---------------- */
+function renderThumbs(){
+  $("thumbs").innerHTML = IMAGES.map((im, i) => `
+    <div class="thumb">
+      <img src="${im.url}" alt="Ảnh ${i}" />
+      <span class="idx">${i}</span>
+      <button class="x" data-rm="${i}" title="Bỏ ảnh ${i}" aria-label="Bỏ ảnh ${i}">✕</button>
+      <span class="st">${esc(im.status || "")}</span>
+    </div>`).join("");
+  $("imgActions").style.display = IMAGES.length ? "flex" : "none";
+  $("imgCount").textContent = IMAGES.length ? `${IMAGES.length} ảnh` : "chưa có ảnh";
+  $("dropHint").textContent = IMAGES.length
+    ? `Đã chọn ${IMAGES.length} ảnh — bấm để thêm ảnh khác`
+    : `JPG/PNG, tối đa ${MAX_IMAGES} ảnh mỗi lần · chụp nhiều tờ một lúc cũng được`;
+  [...document.querySelectorAll("[data-rm]")].forEach(b => b.onclick = () => {
+    const i = Number(b.dataset.rm);
+    URL.revokeObjectURL(IMAGES[i].url);
+    IMAGES.splice(i, 1);
+    renderThumbs();
+  });
+}
+function addFiles(list){
+  let skipped = 0;
+  for(const f of list){
+    if(!f.type.startsWith("image/")){ skipped++; continue; }
+    if(IMAGES.length >= MAX_IMAGES){
+      setAiStatus(`Chỉ gửi tối đa ${MAX_IMAGES} ảnh một lần.`, "warn");
+      break;
+    }
+    IMAGES.push({file: f, url: URL.createObjectURL(f), status: ""});
+  }
+  if(skipped) setAiStatus(`${skipped} file không phải ảnh đã bị bỏ qua.`, "warn");
+  renderThumbs();
+}
+$("drop").onclick = () => $("file").click();
+$("drop").onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
+$("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+["dragenter","dragover"].forEach(ev => $("drop").addEventListener(ev, e => {
+  e.preventDefault(); $("drop").classList.add("hot"); }));
+["dragleave","drop"].forEach(ev => $("drop").addEventListener(ev, e => {
+  e.preventDefault(); $("drop").classList.remove("hot"); }));
+$("drop").addEventListener("drop", e => addFiles(e.dataTransfer.files));
+$("btnClear").onclick = () => { IMAGES.forEach(i => URL.revokeObjectURL(i.url)); IMAGES = []; renderThumbs(); };
+
+/* ---------------- Gemini ---------------- */
+const KEY_STORE = "bienban.gemini.key";
+const MODEL_STORE = "bienban.gemini.model";
+$("key").value = localStorage.getItem(KEY_STORE) || "";
+$("key").oninput = () => localStorage.setItem(KEY_STORE, $("key").value.trim());
+$("model").innerHTML = `<option>${esc(DEFAULT_MODEL)}</option>`;
+$("model").onchange = () => localStorage.setItem(MODEL_STORE, $("model").value);
+
+async function loadModels(){
+  const key = ($("key").value || "").trim();
+  if(!key && !ENV_KEY){
+    setAiStatus("Chưa có API key. Dán key ở trên, hoặc chạy server với <code>GEMINI_API_KEY</code>.", "warn");
+    return;
+  }
+  const btn = $("btnModels");
+  btn.disabled = true; btn.textContent = "Đang lấy…";
+  try{
+    const r = await fetch("/api/ai/models", {headers: key ? {"X-Gemini-Key": key} : {}});
+    const d = await r.json();
+    if(!d.ok){ setAiStatus(esc(d.error || "Không lấy được danh sách model"), "err"); return; }
+    const saved = localStorage.getItem(MODEL_STORE);
+    const sel = d.models.includes(saved) ? saved
+              : (d.models.includes(DEFAULT_MODEL) ? DEFAULT_MODEL : d.models[0]);
+    $("model").innerHTML = d.models.map(m =>
+      `<option ${m===sel?"selected":""}>${esc(m)}</option>`).join("");
+    setAiStatus(`Đã lấy ${d.models.length} model khả dụng.`, "ok");
+  }catch(e){
+    setAiStatus("Không gọi được máy chủ: " + esc(e.message), "err");
+  }finally{
+    btn.disabled = false; btn.textContent = "↻ Danh sách model";
+  }
+}
+$("btnModels").onclick = loadModels;
+
+$("btnPrompt").onclick = async () => {
+  try{
+    const forms = FORM_KEYS.filter(formHasData);
+    const r = await fetch("/api/ai/prompt" + (forms.length ? "?forms=" + forms.join(",") : ""));
+    const d = await r.json();
+    $("promptText").value = d.prompt || "";
+    $("modal").classList.add("on");
+  }catch(e){ setAiStatus("Không tải được prompt: " + esc(e.message), "err"); }
+};
+$("btnCloseModal").onclick = () => $("modal").classList.remove("on");
+$("modal").onclick = e => { if(e.target === $("modal")) $("modal").classList.remove("on"); };
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape") $("modal").classList.remove("on");
+});
+
+$("btnRecognize").onclick = async () => {
+  if(!IMAGES.length){ setAiStatus("Chưa chọn ảnh nào.", "warn"); return; }
+  const key = ($("key").value || "").trim();
+  if(!key && !ENV_KEY){
+    setAiStatus("Chưa có API key Gemini. Dán key ở ô phía trên, hoặc chạy server với <code>GEMINI_API_KEY</code>.", "warn");
+    return;
+  }
+  const fd = new FormData();
+  IMAGES.forEach((im, i) => { fd.append("images", im.file, im.file.name || `anh${i}.jpg`); im.status = "đang đọc…"; });
+  fd.append("model", $("model").value || DEFAULT_MODEL);
+  renderThumbs();
+  const btn = $("btnRecognize");
+  btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Đang đọc ảnh…`;
+  setAiStatus(`Gemini đang đọc ${IMAGES.length} ảnh — thường mất 20–90 giây.`, "info");
+
+  try{
+    const r = await fetch("/api/ai/recognize", {
+      method: "POST", body: fd, headers: key ? {"X-Gemini-Key": key} : {}
+    });
+    let d = {};
+    try{ d = await r.json(); }catch(e){ d = {ok:false, error:"Máy chủ trả về dữ liệu không hợp lệ"}; }
+
+    if(!r.ok || !d.ok){
+      IMAGES.forEach(im => im.status = "lỗi"); renderThumbs();
+      let html = `<b>Không nhận dạng được.</b><br>${esc(d.error || "Lỗi không rõ")}`;
+      if(d.notes && d.notes.length) html += "<br>Ghi chú AI: " + d.notes.map(esc).join("; ");
+      setAiStatus(html, "err");
+      return;
+    }
+    IMAGES.forEach(im => im.status = "đã đọc"); renderThumbs();
+    await loadData(d.data);
+    const blocks = (d.blocks || []).map(b => b.replace("bien_ban_", ""));
+    let html = `Đã đọc <b>${blocks.length} biên bản</b>: ${blocks.join(", ")}. ` +
+               `Soát lại từng ô bên phải rồi bấm <b>Xem trước &amp; sinh biên bản</b>.`;
+    if(d.notes && d.notes.length)
+      html += `<br><b>AI chưa chắc:</b> ${d.notes.map(esc).join("; ")}`;
+    setAiStatus(html, d.notes && d.notes.length ? "warn" : "ok");
+    $("status").innerHTML = "";
+    setStep(2);
+  }catch(e){
+    setAiStatus("Lỗi khi gọi máy chủ: " + esc(e.message), "err");
+  }finally{
+    btn.disabled = false; btn.innerHTML = "✨ Nhận dạng ảnh → điền form";
+  }
+};
+
+/* ---------------- kiểm tra / sinh ---------------- */
+$("btnValidate").onclick = async () => {
+  try{
+    const r = await fetch("/api/validate", {method:"POST", headers:{"Content-Type":"application/json"},
+                                            body: JSON.stringify(DATA)});
+    const d = await r.json();
+    const errs = (d.problems || []).filter(p => p.level === "error");
+    $("status").innerHTML = errs.length
+      ? problemsHtml(d.problems)
+      : alertHtml("ok", "✓", `Dữ liệu hợp lệ. Sẽ sinh <b>${(d.forms||[]).length} biên bản</b>: ${(d.forms||[]).join(", ")}`);
+  }catch(e){ $("status").innerHTML = alertHtml("err", "✕", "Lỗi khi gọi máy chủ: " + esc(e.message)); }
+};
+
+$("btnRender").onclick = async () => {
+  $("status").innerHTML = alertHtml("info", "i", `<span class="spin"></span> Đang sinh biên bản…`);
+  const btn = $("btnRender");
+  btn.disabled = true;
+  try{
+    const r = await fetch("/api/render", {method:"POST", headers:{"Content-Type":"application/json"},
+                                          body: JSON.stringify(DATA)});
+    const res = await r.json();
+    if(!res.ok){
+      $("status").innerHTML = problemsHtml(res.problems) ||
+        alertHtml("err", "✕", esc(res.error || "Có lỗi xảy ra"));
+      return;
+    }
+    TOKEN = res.token; PREVIEWS = res.previews || {}; DIRTY = false;
+    $("status").innerHTML = alertHtml("ok", "✓",
+      `Đã sinh <b>${res.files.length} biên bản</b> — xem trước bên dưới rồi tải file.`) +
+      problemsHtml(res.warnings);
+    $("previewCard").style.display = "block";
+    $("btnZip").style.display = "inline-flex";
+    $("btnZip").href = res.zip_url;
+    $("previewTabs").innerHTML = res.files.map(f =>
+      `<div class="tab" data-name="${esc(f)}" role="tab" title="${esc(f)}">
+         <span class="num">${esc(f.split("_")[0])}</span> ${esc(f.replace(/^\d+_/, "").replace(".docx", ""))}
+       </div>`).join("");
+    [...document.querySelectorAll("#previewTabs .tab")].forEach(t => {
+      t.onclick = () => showPreview(t.dataset.name);
+      t.onkeydown = e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); t.click(); } };
+    });
+    $("files").innerHTML = res.files.map(f => `<div class="file">
+        <span class="ico">W</span>
+        <span class="nm">${esc(f)}</span>
+        <span class="acts">
+          <button class="small" data-preview="${esc(f)}">Xem</button>
+          <a class="btn primary small" href="/download/${TOKEN}/${encodeURIComponent(f)}" download>⬇ Tải</a>
+          <a class="btn small icon-only" href="/preview/${TOKEN}/${encodeURIComponent(f)}"
+             target="_blank" rel="noopener" title="Mở tab riêng" aria-label="Mở tab riêng">↗</a>
+        </span></div>`).join("");
+    [...document.querySelectorAll("[data-preview]")].forEach(b =>
+      b.onclick = () => showPreview(b.dataset.preview));
+    showPreview(res.files[0]);
+    setStep(3);
+    $("previewCard").scrollIntoView({behavior:"smooth", block:"start"});
+  }catch(e){
+    $("status").innerHTML = alertHtml("err", "✕", "Lỗi khi gọi máy chủ: " + esc(e.message));
+  }finally{
+    btn.disabled = false;
+  }
+};
+
+function showPreview(name){
+  const html = PREVIEWS[name];
+  if(!html) return;
+  $("ifr").srcdoc = `<!doctype html><html lang="vi"><head><meta charset="utf-8">
+     <style>body{margin:0;background:#e9edf4;padding:16px 8px}${CSS}</style></head>
+     <body>${html}</body></html>`;
+  [...document.querySelectorAll("#previewTabs .tab")].forEach(t =>
+    t.classList.toggle("active", t.dataset.name === name));
+}
+
+/* ---------------- JSON thủ công ---------------- */
+$("btnJsonApply").onclick = async () => {
+  let d;
+  try{ d = JSON.parse($("json").value); }
+  catch(e){ $("status").innerHTML = alertHtml("err", "✕", "JSON sai cú pháp: " + esc(e.message)); return; }
+  await loadData(d);
+  $("status").innerHTML = alertHtml("ok", "✓", "Đã nạp JSON vào form.");
+  setStep(2);
+};
+$("btnSample").onclick = async () => {
+  await loadData(JSON.parse(SAMPLE));
+  $("status").innerHTML = alertHtml("ok", "✓", "Đã nạp dữ liệu mẫu E-GREEN 01/11/2026.");
+  setStep(2);
+};
+$("btnCopy").onclick = async () => {
+  try{ await navigator.clipboard.writeText($("json").value); setAiStatus("Đã sao chép JSON.", "ok"); }
+  catch(e){ setAiStatus("Trình duyệt chặn sao chép — bôi đen rồi Ctrl+C.", "warn"); }
+};
+$("btnDownloadJson").onclick = () => {
+  const blob = new Blob([$("json").value], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "bien-ban.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+$("btnAddForm").onclick = () => {
+  const missing = FORM_KEYS.filter(f => !formHasData(f));
+  if(!missing.length){ setAiStatus("Đã có đủ 5 biên bản.", "info"); return; }
+  const pick = prompt("Thêm biên bản mẫu nào?\n" +
+      missing.map(f => `${f} = ${SCHEMA.forms[f].title}`).join("\n"), missing[0]);
+  const form = (pick || "").trim().slice(0,2);
+  if(!missing.includes(form)) return;
+  ACTIVE = form;
+  const b = ensureBlock(form);
+  SCHEMA.forms[form].groups.forEach(g => {
+    if(!g.table || rowsOf(b, g.table).length) return;
+    if(g.table.kind === "fixed"){
+      b[g.table.key] = {rows: g.table.rows.map(r => ({key: r.key}))};
+    } else {
+      b[g.table.key] = {rows: [Object.assign({stt: "1"}, g.table.new_row || {})]};
+      if(g.table.sync_so_luong) b[g.table.sync_so_luong] = "01";
+    }
+  });
+  renderTabs(); renderEditor(); syncJson();
+  setAiStatus(`Đã thêm biên bản mẫu ${form}.`, "ok");
+  setStep(2);
+};
+
+/* ---------------- chữ lớn ---------------- */
+const BIG_STORE = "bienban.big";
+function applyBig(on){
+  document.body.classList.toggle("big", on);
+  $("btnBig").setAttribute("aria-pressed", on ? "true" : "false");
+  $("btnBig").textContent = on ? "A−" : "A+";
+  localStorage.setItem(BIG_STORE, on ? "1" : "0");
+}
+$("btnBig").onclick = () => applyBig(!document.body.classList.contains("big"));
+applyBig(localStorage.getItem(BIG_STORE) === "1");
+
+/* ---------------- in bản xem trước ---------------- */
+$("btnPrint").onclick = () => {
+  const fr = $("ifr");
+  try{ fr.contentWindow.focus(); fr.contentWindow.print(); }
+  catch(e){ window.open("/preview/" + TOKEN + "/" + encodeURIComponent(currentPreview), "_blank"); }
+};
+let currentPreview = null;
+const _showPreview = showPreview;
+showPreview = function(name){ currentPreview = name; return _showPreview(name); };
+
+/* ---------------- khởi động ---------------- */
+loadData(JSON.parse(SAMPLE)).catch(() => {});
+fetch("/api/ai/status").then(r => r.json()).then(s => {
+  ENV_KEY = !!(s && s.has_env_key);
+  if(ENV_KEY){
+    $("key").placeholder = "Không cần nhập — server đã có key";
+    $("keyOpt").textContent = "— server đã có key, bỏ trống được";
+    $("aiChipText").textContent = "Gemini sẵn sàng";
+    $("aiDot").classList.add("on");
+    $("keyState").textContent = "đã cấu hình";
+    $("keyState").style.color = "var(--ok)";
+  }else{
+    $("aiChipText").textContent = "Chưa có API key";
+    setAiStatus("Dán API key Gemini ở trên để bật nhận dạng ảnh — hoặc đặt biến môi trường " +
+                "<code>GEMINI_API_KEY</code> khi chạy server.", "info");
+  }
+}).catch(() => {
+  $("aiChipText").textContent = "Không rõ trạng thái";
+  setAiStatus("Chưa kiểm tra được trạng thái API key.", "warn");
+});
+</script>
+</body>
+</html>

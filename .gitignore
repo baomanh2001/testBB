@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+output/
+*.egg-info/
+.pytest_cache/
+config.json
+
+# Cấu hình riêng của máy (chứa API key) — tuyệt đối không commit
+.env
+.env.*
+!.env.example
