@@ -34,6 +34,7 @@ from .normalize import (
 )
 from .ooxml import cell_text, para_text, set_cell_text, set_para_text
 from .schema import FORM_GROUPS
+from .watermark import apply_watermark
 from .spec import (DATA_KEYS, DOC_KIND, LABELS, TABLE_HEADER_ROWS,
                    TABLE_PROBES, TEMPLATES, TITLES)
 
@@ -760,6 +761,16 @@ def render_form(
 
     # in đậm / in hoa theo cấu hình (mặc định: giữ như mẫu)
     apply_header_style(doc, form, cfg)
+
+    # hình nền chính thống: logo công ty làm dấu chìm (mặc định bật)
+    wm = cfg.get("watermark") or {}
+    if wm.get("enabled", True):
+        if not apply_watermark(doc, opacity=wm.get("opacity", 0.06),
+                               scale=wm.get("scale", 0.62),
+                               dpi=wm.get("dpi", 96)):
+            warnings.append("Không tìm thấy logo trong mẫu để làm hình nền chìm")
+        else:
+            log("    ✓ Hình nền chìm                 = logo công ty")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     so = norm_text(block.get("so_bien_ban") or "")

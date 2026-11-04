@@ -1267,6 +1267,113 @@ class TestCheckEndpoint:
         assert _LAST_IMAGES["blobs"]
 
 
+class TestWatermark:
+    """Hình nền chính thống: logo công ty làm dấu chìm trong mọi biên bản."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    def test_finds_the_real_logo_not_the_signature(self):
+        """Ba ảnh trong mẫu: logo nhỏ, chữ ký, logo lớn — phải chọn logo lớn."""
+        import io
+
+        import docx
+        from PIL import Image
+
+        from bienban.watermark import find_logo
+
+        doc = docx.Document(str(ROOT / "templates" / "45 MCCB 250A.docx"))
+        blob = find_logo(doc)
+        assert blob, "không tìm thấy logo"
+        w, h = Image.open(io.BytesIO(blob)).size
+        assert w > 300 and h > 300, (w, h)          # logo lớn 1227×1091
+        # có cả đỏ lẫn xanh navy => đúng logo, không phải chữ ký
+        im = Image.open(io.BytesIO(blob)).convert("RGB")
+        im.thumbnail((64, 64))
+        getter = getattr(im, "get_flattened_data", None) or im.getdata
+        px = list(getter())
+        red = sum(1 for r, g, b in px if r > 140 and g < 110 and b < 110)
+        navy = sum(1 for r, g, b in px if b > 60 and b > r + 25 and g < b)
+        assert red > 20 and navy > 20, (red, navy)
+
+    def test_signature_is_rejected(self):
+        """Ảnh chữ ký (chỉ một màu mực) không được dùng làm hình nền."""
+        from bienban.watermark import _logo_score
+
+        from PIL import Image
+
+        # chữ ký điện thoại thật trong mẫu 46
+        import zipfile
+
+        z = zipfile.ZipFile(str(ROOT / "templates" / "46 BB LA.docx"))
+        name = [n for n in z.namelist() if n.endswith(".png")][0]
+        import io
+
+        im = Image.open(io.BytesIO(z.read(name)))
+        assert _logo_score(im) == 0.0
+
+    def test_watermark_added_to_every_template(self, tmp_path):
+        import io
+        import json
+        import zipfile
+
+        import docx
+
+        from bienban.fill import load_config, render_form
+
+        data = json.loads((ROOT / "samples" / "e-green-01112026.json").read_text(encoding="utf-8"))
+        cfg = load_config()
+        cfg["watermark"] = {"enabled": True, "opacity": 0.06, "scale": 0.62}
+        for form in ("44", "45", "46", "47", "48"):
+            path, warn = render_form(form, data, templates_dir=ROOT / "templates",
+                                     out_dir=tmp_path, cfg=cfg, log=lambda s: None)
+            z = zipfile.ZipFile(str(path))
+            headers = [n for n in z.namelist()
+                       if n.startswith("word/header") and n.endswith(".xml")]
+            xml = "".join(z.read(h).decode() for h in headers)
+            assert "Logo chìm" in xml, form
+            assert 'behindDoc="1"' in xml, form            # nằm dưới chữ
+            assert "alphaModFix" in xml, form               # có độ trong suốt
+            assert not any("logo" in w.lower() for w in warn), warn
+            # mở lại được bằng python-docx (file không hỏng)
+            docx.Document(io.BytesIO(z.read("word/document.xml")) if False else str(path))
+
+    def test_can_be_turned_off(self, tmp_path):
+        import json
+        import zipfile
+
+        from bienban.fill import load_config, render_form
+
+        data = json.loads((ROOT / "samples" / "e-green-01112026.json").read_text(encoding="utf-8"))
+        cfg = load_config()
+        cfg["watermark"] = {"enabled": False}
+        path, _ = render_form("45", data, templates_dir=ROOT / "templates",
+                              out_dir=tmp_path, cfg=cfg, log=lambda s: None)
+        z = zipfile.ZipFile(str(path))
+        xml = "".join(z.read(n).decode() for n in z.namelist()
+                      if n.startswith("word/header") and n.endswith(".xml"))
+        assert "Logo chìm" not in xml
+
+    def test_web_preview_has_watermark_css(self, client):
+        page = client.get("/").get_data(as_text=True)
+        assert ".page-wm::before" in page
+        assert "background-image:url(data:image/" in page
+
+    def test_config_example_documents_watermark(self):
+        import json
+
+        cfg = json.loads((ROOT / "config.example.json").read_text(encoding="utf-8"))
+        assert cfg["watermark"]["enabled"] is True
+        assert 0 < cfg["watermark"]["opacity"] <= 0.2
+
+
 class TestImageReview:
     """Giữ ảnh qua F5 (IndexedDB) + lightbox xem lại ảnh đã tải."""
 

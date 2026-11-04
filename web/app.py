@@ -56,6 +56,30 @@ SAMPLE = ROOT / "samples" / "e-green-01112026.json"
 _LOGO_CACHE = ""            # cache data-URI logo công ty
 
 
+_WM_LOGO: bytes | None = None
+
+
+def _watermark_css() -> str:
+    """CSS để bản xem trước trên web có đúng dấu chìm như bản in."""
+    global _WM_LOGO
+    if _WM_LOGO is None:
+        try:
+            import docx
+
+            from bienban.watermark import find_logo
+
+            _WM_LOGO = find_logo(docx.Document(str(ROOT / "templates" / TEMPLATES["45"]))) or b""
+        except Exception:                                  # pragma: no cover
+            _WM_LOGO = b""
+    if not _WM_LOGO:
+        return ""
+    import base64
+
+    b64 = base64.b64encode(_WM_LOGO).decode()
+    mime = "image/png" if _WM_LOGO[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+    return ("\n.page-wm::before{background-image:url(data:%s;base64,%s)}\n" % (mime, b64))
+
+
 def _brand_logo() -> str:
     """Logo công ty (lấy từ file mẫu Word) dạng data-URI, cache 1 lần."""
     global _LOGO_CACHE
@@ -66,12 +90,16 @@ def _brand_logo() -> str:
 
         import docx
 
+        from bienban.watermark import find_logo
+
         doc = docx.Document(str(ROOT / "templates" / TEMPLATES["45"]))
-        for rel in doc.part.rels.values():
-            if "image" in rel.reltype and str(rel.target_part.partname).endswith(".jpeg"):
-                blob = rel.target_part.blob
-                _LOGO_CACHE = "data:image/jpeg;base64," + base64.b64encode(blob).decode()
-                break
+        blob = find_logo(doc)
+        if blob:
+            from bienban.watermark import _shrink
+
+            blob = _shrink(blob, 96, target_px=256)   # logo trên web chỉ cần nhỏ
+            mime = "image/png" if blob[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+            _LOGO_CACHE = f"data:{mime};base64," + base64.b64encode(blob).decode()
     except Exception:                                     # pragma: no cover
         _LOGO_CACHE = ""
         return ""
@@ -309,7 +337,7 @@ def index():
                 "data_key": DATA_KEYS[k]} for k in sorted(TEMPLATES)],
         schema=web_schema(),
         logo=_brand_logo(),
-        css=PAGE_CSS,
+        css=PAGE_CSS + _watermark_css(),
         default_model=vision.DEFAULT_MODEL,
         max_images=vision.MAX_IMAGES,
     )
@@ -409,7 +437,7 @@ def preview_page(token: str, name: str):
         abort(404)
     return render_template(
         "preview.html",
-        css=PAGE_CSS,
+        css=PAGE_CSS + _watermark_css(),
         body=docx_to_html(target),
         name=name,
         download_url=f"/download/{token}/{name}",
