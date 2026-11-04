@@ -18,14 +18,14 @@
 9. **Thông tuyến cáp ngầm trung thế**.
 10. **Tủ tụ bù hạ thế** — các bảng MCCB tổng, nhánh, contactor và tụ.
 
-Hai bộ dữ liệu mẫu có thể chọn trên giao diện: Dream Mekong 1500kVA (7 biên bản) và E-GREEN 50kVA (5 biên bản). Bản xem trước của các mẫu mới là bản tóm tắt, không đảm bảo bố cục giống Word; hãy kiểm tra file Word trước khi sử dụng. AI có thể đọc sai hoặc bỏ sót: luôn đối chiếu ảnh gốc, số liệu và chữ ký trước khi phát hành.
+Hai bộ dữ liệu mẫu có thể chọn trên giao diện: Dream Mekong 1500kVA (7 biên bản) và E-GREEN 50kVA (5 biên bản). Bản xem trước được dựng từ file Word xuất ra; trình duyệt có thể phân trang hoặc hiển thị phông chữ khác Microsoft Word, vì vậy cần kiểm tra file Word trước khi sử dụng. AI có thể đọc sai hoặc bỏ sót: luôn đối chiếu ảnh gốc, số liệu và chữ ký trước khi phát hành.
 
 ---
 
 ## 2. Tính năng nổi bật
 
 - **Hỗ trợ kép AI Vision**: Chọn linh hoạt **Google Gemini** (`gemini-3.8-flash` mặc định; có thể chọn hoặc nhập model khác tùy quyền truy cập API) hoặc **OpenAI** (`gpt-4o`, `gpt-4.1`), kèm chế độ nhập/chỉnh sửa trực tiếp không cần key.
-- **Đối chiếu Song song (Split-Screen)**: Bên trái là trình soi ảnh gốc (phóng to/thu nhỏ lăn chuột, kéo giữ, xoay trái/phải 90°), bên phải là Form chỉnh sửa số liệu & **Xem trước trang A4 chuẩn in**.
+- **Đối chiếu Song song (Split-Screen)**: Bên trái là trình soi ảnh gốc (phóng to/thu nhỏ lăn chuột, kéo giữ, xoay trái/phải 90°), bên phải là Form chỉnh sửa số liệu & **Xem trước nội dung file Word**.
 - **Đồng bộ cả lô Trạm biến áp**: Chỉnh 1 lần *Tên công trình, Địa chỉ, Đơn vị yêu cầu, Ngày kiểm định, Ngày phát hành, STT bắt đầu (`44, 45...`), Bộ 3 người ký & Chữ ký ảnh* → áp dụng tự động cho toàn bộ biên bản trong trạm.
 - **Tải lẻ `.docx` hoặc Tải trọn bộ `.zip`**: Xuất trực tiếp chuẩn `.docx` mở mượt trên mọi phiên bản Microsoft Word.
 
@@ -58,3 +58,5 @@ chmod +x run.sh
 - `app/docx_generator.py`: Bộ xuất file `.docx` giữ nguyên định dạng XML, bảng biểu, logo, watermark và chữ ký.
 - `app/static/vision_ai.js`: Prompt chuyên ngành thí nghiệm điện & kết nối Gemini / OpenAI Vision.
 - `app/static/index.html`, `styles.css`, `app.js`: Giao diện Web đối chiếu ảnh – sửa form – xem trước A4.
+
+- `app/static/vendor/`: Thư viện JSZip và docx-preview cùng giấy phép, dùng để dựng bản xem trước từ file Word xuất ra.

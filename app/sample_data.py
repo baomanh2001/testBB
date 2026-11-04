@@ -306,7 +306,7 @@ def get_dream_mekong_batch() -> Dict[str, Any]:
             ],
             "ai_notes": [
                 "Tự động gộp Trang 1/2 (Mục I..III.4) và Trang 2/2 (Nấc 4..5 + Mục 5, 6, 7, IV, V) thành 1 biên bản MBA 3 pha.",
-                "Chuẩn hóa 'Thibidi' → 'THIBIDI', 'VN' → 'Việt Nam', Tổ đấu dây 'Dyn11'.",
+                "Số liệu mẫu được lấy từ Word 092; ảnh hiện trường có chỗ khác (ví dụ nhiệt độ và nhãn hai hàng cách điện). Cần đối chiếu trước khi sử dụng.",
             ],
             "common": {
                 "so_bien_ban": "50921026/BB-TC",

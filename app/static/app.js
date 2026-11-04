@@ -55,15 +55,15 @@
     pendingUploads: [], // [{ id, name, file, previewUrl }]
     viewer: { zoom: 1, rotation: 0, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 },
     batchConfig: {
-      sttStart: 44,
-      monthYear: "1126",
-      ngayKiemDinh: "01/11/2026",
-      ngayPhatHanh: "04/11/2026",
-      tenCongTrinh: "Trạm biến áp 50kVA – DOANH NGHIỆP TƯ NHÂN E-GREEN",
-      diaChi: "Khu phố Gia Huỳnh, Phường Trảng Bàng, Tỉnh Tây Ninh, Việt Nam",
-      donViYeuCau: "DOANH NGHIỆP TƯ NHÂN E-GREEN",
-      lyDo: "Sau sự cố",
-      noiKiemDinh: "Tại hiện trường",
+      sttStart: 1,
+      monthYear: "",
+      ngayKiemDinh: "",
+      ngayPhatHanh: "",
+      tenCongTrinh: "",
+      diaChi: "",
+      donViYeuCau: "",
+      lyDo: "",
+      noiKiemDinh: "",
       nguoiThu: "Nguyễn Trung Nghĩa",
       kiemTra: "Nguyễn Minh Quân",
       phoGiamDoc: "Nguyễn Nhật Tân",
@@ -253,6 +253,17 @@
     };
   }
 
+  function blankData(value) {
+    if (Array.isArray(value)) return value.map(blankData);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k,v]) => [k, blankData(v)]));
+    return "";
+  }
+
+  const FIELD_LABELS = {
+    so_tem: "Số tem", hieu_may: "Hiệu máy", so_may: "Số máy", nuoc_san_xuat: "Nước sản xuất", nam_san_xuat: "Năm sản xuất", cong_suat_dinh_muc: "Công suất định mức", so_pha: "Số pha", tan_so: "Tần số", dien_ap_dinh_muc: "Điện áp định mức", to_dau_day: "Tổ đấu dây", kiem_tra_ben_ngoai: "Kiểm tra bên ngoài", nhiet_do: "Nhiệt độ", cach_dien_rows: "Điện trở cách điện", doi_tuong_do: "Đối tượng đo", r60: "R60 (MΩ)", r15: "R15 (MΩ)", kht: "Kht", dc_cao_ap_rows: "Điện trở một chiều cuộn dây cao áp (Ω)", nac: "Nấc", ab: "AB", bc: "BC", ca: "CA", dc_ha_an: "Cuộn hạ áp an (mΩ)", dc_ha_bn: "Cuộn hạ áp bn (mΩ)", dc_ha_cn: "Cuộn hạ áp cn (mΩ)", ti_so_rows: "Tỉ số biến áp", k1: "K1", k2: "K2", k3: "K3", khong_tai_u0: "U0 (V)", khong_tai_i0: "I0 (A)", khong_tai_i0_pct: "I0 (%)", khong_tai_p0: "P0 (W)", ngan_mach_un: "UN (V)", ngan_mach_un_pct: "UN (%)", ngan_mach_in: "IN (A)", ngan_mach_pn75: "PN75 (W)", dien_ap_tang_cao_rows: "Thử nghiệm điện áp tăng cao", doi_tuong_thu: "Đối tượng thử", u_thu: "U thử (kV)", thoi_gian: "Thời gian thử", thiet_bi_kiem_dinh: "Thiết bị kiểm định", tieu_chuan_kiem_dinh: "Tiêu chuẩn kiểm định", ket_luan: "Kết luận", hieu: "Hiệu", so_cuc: "Số cực", loai: "Loại", kieu: "Kiểu", dong_dien_dinh_muc: "Dòng điện định mức", dong_ngan_mach: "Dòng điện ngắn mạch tối đa", dien_ap_cach_dien: "Điện áp cách điện định mức", dien_ap_xung: "Điện áp chịu xung định mức", so_luong: "Số lượng", rows: "Kết quả thử nghiệm", stt: "STT", rcd_close: "R cách điện Close (MΩ)", rcd_open: "R cách điện Open (MΩ)", rtx_a: "R tiếp xúc pha A (µΩ)", rtx_b: "R tiếp xúc pha B (µΩ)", rtx_c: "R tiếp xúc pha C (µΩ)", utest: "Utest (kV/1 phút)", dong_cat: "Đóng / Cắt", so_tem_row: "Số tem", vat_lieu_cach_dien: "Vật liệu cách điện", kha_nang_cat_ngan_mach: "Khả năng cắt ngắn mạch", thiet_bi: "Thiết bị", rcd_truoc: "R cách điện trước thử (MΩ)", rcd_sau: "R cách điện sau thử (MΩ)", ac_kho: "AC điều kiện khô (kV)", ac_uot: "AC điều kiện ướt (kV)", ket_qua: "Kết quả", doan_cap_tu: "Đoạn cáp đi từ", doan_cap_den: "Đến", loai_cap: "Loại cáp", tiet_dien: "Tiết diện", tieu_chuan: "Tiêu chuẩn (MΩ)", so_lieu_do: "Số liệu đo (MΩ)", dc_tang_cao_rows: "Điện áp một chiều tăng cao", dien_ap_thu: "Điện áp thử nghiệm (kV)", dong_ro: "Dòng rò (µA)", mccb_tong_thong_so: "Thông số MCCB tổng", mccb_tong_so_luong: "Số lượng MCCB tổng", mccb_tong_rows: "Kết quả thử nghiệm MCCB tổng", mccb_nhanh_thong_so: "Thông số MCCB nhánh", mccb_nhanh_so_luong: "Số lượng MCCB nhánh", mccb_nhanh_rows: "Kết quả thử nghiệm MCCB nhánh", contactor_thong_so: "Thông số Contactor", contactor_so_luong: "Số lượng Contactor", contactor_rows: "Kết quả thử nghiệm Contactor", tu_bu_so_luong: "Số lượng tụ bù", tu_bu_rows: "Kết quả thử nghiệm tụ bù", dung_luong: "Dung lượng (kVAr)", r_cach_dien: "R cách điện (MΩ)", dien_dung: "Giá trị điện dung (µF)"
+  };
+  function fieldLabel(key) { return FIELD_LABELS[key] || key; }
+
   function buildSuggestedFilename(stt, type, data) {
     const prefix = String(stt).padStart(2, "0");
     if (type === "mba_1p") {
@@ -271,13 +282,13 @@
 
   function buildSoBienBan(stt, monthYear) {
     const sttStr = String(stt).padStart(3, "0");
-    const my = (monthYear || "1126").trim();
-    return `5${sttStr}${my}/BB-TC`;
+    const my = (monthYear || "").trim();
+    return /^\d{4}$/.test(my) ? `5${sttStr}${my}/BB-TC` : "";
   }
 
   function extractMonthYearFromDate(ddmmyyyy) {
     const m = String(ddmmyyyy || "").match(/(\d{1,2})\/(\d{2,4})$/);
-    if (!m) return "1126";
+    if (!m) return "";
     const mm = m[1].padStart(2, "0");
     const yy = m[2].slice(-2);
     return `${mm}${yy}`;
@@ -394,11 +405,11 @@
     }
   }
 
-  async function runAiOnImageSources(imageItems, replaceExisting = false) {
+  async function runAiOnImageSources(imageItems, replaceExisting = false, targetId = null) {
     if (!state.aiConfig.apiKey || !state.aiConfig.apiKey.trim()) {
       openModal("modalAiConfig");
       showToast("Vui lòng nhập API Key Gemini hoặc OpenAI trước khi chạy đọc ảnh tự động.", "error");
-      return;
+      return false;
     }
 
     const banner = document.getElementById("aiProgressBanner");
@@ -443,9 +454,14 @@
         }));
 
       const builtReports = aiReports.map((ar, idx) => {
-        const rType = TYPE_LABELS[ar.report_type] ? ar.report_type : "mccb";
+        if (!TYPE_LABELS[ar.report_type]) throw new Error(`Không nhận diện được loại biên bản: ${ar.report_type || "chưa rõ"}. Vui lòng kiểm tra ảnh và thử lại.`);
+        const rType = ar.report_type;
         const stt = baseStt + idx;
-        const mergedData = { ...defaultDataForType(rType), ...(ar.data || {}) };
+        const blankDefaults = blankData(defaultDataForType(rType));
+        if (NEW_TYPE_DEFAULTS[rType]) {
+          for (const key of Object.keys(blankDefaults)) if (Array.isArray(blankDefaults[key])) blankDefaults[key] = [];
+        }
+        const mergedData = { ...blankDefaults, ...(ar.data || {}) };
         const srcIndices = Array.isArray(ar.source_image_indices) ? ar.source_image_indices : [];
         const imgs = srcIndices
           .filter((i) => imageItems[i])
@@ -456,10 +472,10 @@
         contextImgList.forEach((ci) => imgs.push(ci));
 
         const commonIn = ar.common || {};
-        const ngayPH = state.batchConfig.ngayPhatHanh || "04/11/2026";
+        const ngayPH = state.batchConfig.ngayPhatHanh || "";
         const mmYY = state.batchConfig.monthYear || extractMonthYearFromDate(ngayPH);
 
-        const notes = Array.isArray(ar.ai_notes) ? [...ar.ai_notes] : [];
+        const notes = ["Cần đối chiếu toàn bộ chữ, số liệu và kết luận với ảnh gốc trước khi phát hành.", ...(Array.isArray(ar.ai_notes) ? ar.ai_notes : [])];
         contextPhotos.forEach((cp) => {
           if (cp.summary) notes.push(`Thông tin từ ảnh phụ trợ: ${cp.summary}`);
         });
@@ -475,17 +491,17 @@
             so_bien_ban: buildSoBienBan(stt, mmYY),
             ngay_phat_hanh: ngayPH,
             loai_tieu_de:
-              rType === "dtnd"
+              ["dtnd", "acb"].includes(rType)
                 ? "BIÊN BẢN THỬ NGHIỆM"
                 : commonIn.loai_tieu_de || "BIÊN BẢN KIỂM ĐỊNH",
-            ten_cong_trinh: commonIn.ten_cong_trinh || state.batchConfig.tenCongTrinh,
-            dia_chi: commonIn.dia_chi || state.batchConfig.diaChi,
-            chi_danh: commonIn.chi_danh || TYPE_LABELS[rType],
-            don_vi_yeu_cau: commonIn.don_vi_yeu_cau || state.batchConfig.donViYeuCau,
-            ly_do: commonIn.ly_do || state.batchConfig.lyDo,
+            ten_cong_trinh: commonIn.ten_cong_trinh || "",
+            dia_chi: commonIn.dia_chi || "",
+            chi_danh: commonIn.chi_danh || "",
+            don_vi_yeu_cau: commonIn.don_vi_yeu_cau || "",
+            ly_do: commonIn.ly_do || "",
             noi_kiem_dinh:
-              commonIn.noi_kiem_dinh || (rType === "dtnd" ? "Hiện trường" : "Tại hiện trường"),
-            ngay_kiem_dinh: commonIn.ngay_kiem_dinh || state.batchConfig.ngayKiemDinh,
+              commonIn.noi_kiem_dinh || "",
+            ngay_kiem_dinh: commonIn.ngay_kiem_dinh || "",
           },
           signatory: {
             nguoi_thu: state.batchConfig.nguoiThu,
@@ -498,7 +514,21 @@
         };
       });
 
-      if (replaceExisting) {
+      if (targetId) {
+        if (builtReports.length !== 1) throw new Error("Đọc lại cần nhận diện đúng một biên bản; dữ liệu hiện tại chưa bị thay đổi.");
+        const index = state.reports.findIndex(r => r.id === targetId);
+        if (index < 0) throw new Error("Không tìm thấy biên bản cần đọc lại.");
+        const previous = state.reports[index];
+        if (builtReports[0].report_type !== previous.report_type) throw new Error("AI nhận diện loại khác với biên bản hiện tại. Dữ liệu chưa bị thay đổi; vui lòng kiểm tra ảnh.");
+        builtReports[0].id = previous.id;
+        builtReports[0].stt_file = previous.stt_file;
+        builtReports[0].filename = previous.filename;
+        builtReports[0].images = previous.images;
+        builtReports[0].signatory = previous.signatory;
+        builtReports[0].common.so_bien_ban = previous.common.so_bien_ban;
+        builtReports[0].common.ngay_phat_hanh = previous.common.ngay_phat_hanh;
+        state.reports[index] = builtReports[0];
+      } else if (replaceExisting) {
         state.reports = builtReports;
       } else {
         state.reports.push(...builtReports);
@@ -516,9 +546,11 @@
       state.activeImageIndex = 0;
       resetViewerTransform();
       renderAll();
-      showToast(`AI đã đọc & tạo thành công ${builtReports.length} biên bản!`, "success");
+      showToast(`AI đã đọc ${builtReports.length} biên bản. Vui lòng đối chiếu ảnh gốc!`, "success");
+      return true;
     } catch (err) {
       showToast(err.message || "Có lỗi khi gọi AI Vision.", "error");
+      return false;
     } finally {
       banner.classList.add("hidden");
     }
@@ -603,6 +635,7 @@
         if (confirm("Xóa danh sách biên bản hiện tại để bắt đầu lô trạm mới?")) {
           state.reports = [];
           state.activeReportId = null;
+          Object.assign(state.batchConfig, {sttStart: 1, monthYear: "", ngayKiemDinh: "", ngayPhatHanh: "", tenCongTrinh: "", diaChi: "", donViYeuCau: "", lyDo: "", noiKiemDinh: ""});
           renderAll();
         }
       });
@@ -715,7 +748,7 @@
       printBtn.classList.remove("hidden");
       editorEl.classList.add("hidden");
       previewEl.classList.remove("hidden");
-      renderA4Preview(rep, previewEl);
+      renderWordPreview(rep, previewEl);
     }
   }
 
@@ -1099,11 +1132,11 @@
     }
 
     if (NEW_TYPE_DEFAULTS[rep.report_type]) {
-      const label = k => esc(k.replace(/_/g, " "));
+      const label = k => esc(fieldLabel(k));
       specificHtml = Object.entries(d).map(([key, value]) => {
         if (!Array.isArray(value)) return `<div class="field"><label>${label(key)}</label><input data-d="${esc(key)}" value="${esc(value)}"></div>`;
         const template = (NEW_TYPE_DEFAULTS[rep.report_type][key] || [])[0] || {};
-        const cols = Object.keys(value[0] || template);
+        const cols = [...new Set([...Object.keys(template), ...Object.keys(value[0] || {})])];
         return `<div class="card"><h4>${label(key)}</h4><div style="overflow:auto"><table><thead><tr>${cols.map(k => `<th>${label(k)}</th>`).join("")}<th></th></tr></thead><tbody>${value.map((row,i) => `<tr>${cols.map(k => `<td><input data-arr="${esc(key)}" data-idx="${i}" data-k="${esc(k)}" value="${esc(row[k])}"></td>`).join("")}<td><button type="button" data-generic-delete="${esc(key)}" data-idx="${i}">Xóa</button></td></tr>`).join("")}</tbody></table></div><button type="button" data-generic-add="${esc(key)}">+ Thêm dòng</button></div>`;
       }).join("");
     }
@@ -1182,9 +1215,10 @@
     if (typeSel) {
       typeSel.addEventListener("change", () => {
         const nextType = typeSel.value;
+        if (!confirm("Đổi loại biên bản sẽ xóa số liệu riêng hiện tại. Tiếp tục?")) { typeSel.value = rep.report_type; return; }
         rep.report_type = nextType;
-        rep.data = { ...defaultDataForType(nextType), ...rep.data };
-        rep.common.loai_tieu_de = nextType === "dtnd" ? "BIÊN BẢN THỬ NGHIỆM" : "BIÊN BẢN KIỂM ĐỊNH";
+        rep.data = blankData(defaultDataForType(nextType));
+        rep.common.loai_tieu_de = ["dtnd", "acb"].includes(nextType) ? "BIÊN BẢN THỬ NGHIỆM" : "BIÊN BẢN KIỂM ĐỊNH";
         if (rep.stt_file) rep.filename = buildSuggestedFilename(rep.stt_file, nextType, rep.data);
         renderAll();
       });
@@ -1404,19 +1438,61 @@
       </div>`;
   }
 
+  // Render the same DOCX bytes used for download, not a separately maintained mockup.
+  // Browser rendering and automatic page breaks can still differ from Microsoft Word.
+  let previewGeneration = 0;
+  async function renderWordPreview(rep, container) {
+    const generation = ++previewGeneration;
+    container.innerHTML = '<p>Đang tạo bản xem trước từ file Word…</p>';
+    try {
+      const response = await fetch("/api/export/docx", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(serializeReportForApi(rep)),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || "Không thể tạo bản xem trước.");
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const host = document.createElement("div");
+      let timeout;
+      try {
+        await Promise.race([
+          window.docx.renderAsync(bytes, host, null, { inWrapper: true, breakPages: true, renderHeaders: true, renderFooters: true, ignoreLastRenderedPageBreak: false }),
+          new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("Hết thời gian dựng bản xem trước")), 15000); }),
+        ]);
+      } finally { clearTimeout(timeout); }
+      if (generation !== previewGeneration || state.rightMode !== "preview" || state.activeReportId !== rep.id) return;
+      container.innerHTML = '<p class="preview-notice no-print">Xem từ file Word được tạo. Ngắt trang và phông chữ trong trình duyệt có thể khác Microsoft Word; hãy kiểm tra file tải về trước khi phát hành.</p>';
+      container.appendChild(host);
+    } catch (err) {
+      if (generation !== previewGeneration || state.rightMode !== "preview" || state.activeReportId !== rep.id) return;
+      renderA4Preview(rep, container);
+      container.insertAdjacentHTML("afterbegin", `<p class="preview-notice no-print">Không dựng được bản Word (${esc(err.message)}). Đây là bản xem nội dung gần đúng; hãy kiểm tra file Word tải về.</p>`);
+    }
+  }
+
   function renderA4Preview(rep, container) {
     const c = rep.common;
     const d = rep.data;
     const sig = rep.signatory;
 
-    if (NEW_TYPE_DEFAULTS[rep.report_type]) {
-      const content = Object.entries(d).map(([key, value]) => {
-        const label = esc(key.replace(/_/g, " "));
-        if (!Array.isArray(value)) return `<div class="a4-line">${label}: ${esc(value)}</div>`;
-        const cols = Object.keys(value[0] || {});
-        return `<div class="a4-sec-heading">${label}</div><table class="a4-table"><tr>${cols.map(k => `<th>${esc(k.replace(/_/g, " "))}</th>`).join("")}</tr>${value.map(row => `<tr>${cols.map(k => `<td>${esc(row[k])}</td>`).join("")}</tr>`).join("")}</table>`;
-      }).join("");
-      container.innerHTML = `<div class="a4-page"><img src="/static/assets/watermark.jpeg" class="a4-watermark" alt=""><div class="a4-content">${renderHeaderTableHtml(c)}<div class="a4-equip-title">${esc(TYPE_FULL_NAMES[rep.report_type])}</div>${Object.entries(c).map(([k,v]) => `<div class="a4-line">${esc(k.replace(/_/g, " "))}: ${esc(v)}</div>`).join("")}${content}${renderSigHtml(sig)}</div>${renderFooterHtml()}</div>`;
+    if (["mba_3p", "cap_ngam", "tu_bu"].includes(rep.report_type)) {
+      const line = (key, obj = d) => `<div class="a4-line">- ${esc(fieldLabel(key))}: ${esc(obj[key])}</div>`;
+      const heading = title => `<div class="a4-sec-heading"><span>${esc(title)}</span></div>`;
+      const table = (title, key, columns) => `${heading(title)}<table class="a4-table"><thead><tr>${columns.map(k => `<th>${esc(fieldLabel(k))}</th>`).join("")}</tr></thead><tbody>${(d[key] || []).map(row => `<tr>${columns.map(k => `<td>${esc(row[k])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      const common = [["Tên công trình",c.ten_cong_trinh],["Địa chỉ",c.dia_chi],["Chỉ danh",c.chi_danh],["Đơn vị yêu cầu",c.don_vi_yeu_cau],["Lý do kiểm định",c.ly_do],["Nơi kiểm định",c.noi_kiem_dinh],["Ngày kiểm định",c.ngay_kiem_dinh]].map(([k,v]) => `<div class="a4-line">- ${esc(k)}: ${esc(v)}</div>`).join("");
+      let content = "";
+      if (rep.report_type === "mba_3p") {
+        content = heading("I. LÝ LỊCH THIẾT BỊ") + ["so_tem","hieu_may","so_may","nuoc_san_xuat","nam_san_xuat"].map(k=>line(k)).join("") + common + heading("II. QUY CÁCH KỸ THUẬT") + ["cong_suat_dinh_muc","so_pha","tan_so","dien_ap_dinh_muc","to_dau_day"].map(k=>line(k)).join("") + heading("III. KẾT QUẢ KIỂM ĐỊNH") + line("kiem_tra_ben_ngoai") + line("nhiet_do") + table("Điện trở cách điện", "cach_dien_rows", ["doi_tuong_do","r60","r15","kht"]) + table("Điện trở một chiều cuộn dây cao áp", "dc_cao_ap_rows", ["nac","ab","bc","ca"]) + ["dc_ha_an","dc_ha_bn","dc_ha_cn"].map(k=>line(k)).join("") + table("Tỉ số biến áp", "ti_so_rows", ["nac","k1","k2","k3"]) + heading("Thử nghiệm không tải") + ["khong_tai_u0","khong_tai_i0","khong_tai_i0_pct","khong_tai_p0"].map(k=>line(k)).join("") + heading("Thử nghiệm ngắn mạch") + ["ngan_mach_un","ngan_mach_un_pct","ngan_mach_in","ngan_mach_pn75"].map(k=>line(k)).join("") + table("Thử nghiệm điện áp tăng cao", "dien_ap_tang_cao_rows", ["doi_tuong_thu","u_thu","thoi_gian"]);
+      } else if (rep.report_type === "cap_ngam") {
+        content = heading("I. THÔNG TIN CÔNG TRÌNH") + common + heading("II. THÔNG SỐ THIẾT BỊ") + ["so_tem","doan_cap_tu","doan_cap_den","loai_cap","tiet_dien","dien_ap_dinh_muc","tan_so"].map(k=>line(k)).join("") + heading("III. KẾT QUẢ KIỂM ĐỊNH") + line("kiem_tra_ben_ngoai") + line("nhiet_do") + table("Điện trở cách điện", "cach_dien_rows", ["doi_tuong_do","tieu_chuan","so_lieu_do"]) + table("Điện áp một chiều tăng cao", "dc_tang_cao_rows", ["doi_tuong_do","thoi_gian","dien_ap_thu","dong_ro"]);
+      } else {
+        const switchCols = ["stt","rcd_close","rcd_open","rtx_a","rtx_b","rtx_c","utest","dong_cat","ket_qua"];
+        content = heading("I. THÔNG TIN CÔNG TRÌNH") + common + heading("II. KẾT QUẢ KIỂM ĐỊNH") + line("kiem_tra_ben_ngoai") + ["mccb_tong","mccb_nhanh","contactor"].map(k => line(k+"_thong_so") + line(k+"_so_luong") + table(fieldLabel(k+"_rows"), k+"_rows", switchCols)).join("") + line("tu_bu_so_luong") + table("Kết quả thử nghiệm tụ bù", "tu_bu_rows", ["stt","dung_luong","r_cach_dien","dien_dung","ket_qua"]);
+      }
+      content += line("thiet_bi_kiem_dinh") + (d.tieu_chuan_kiem_dinh !== undefined ? line("tieu_chuan_kiem_dinh") : "") + line("ket_luan");
+      container.innerHTML = `<div class="a4-page a4-flow"><img src="/static/assets/watermark.jpeg" class="a4-watermark" alt=""><div class="a4-content">${renderHeaderTableHtml(c)}<div class="a4-equip-title">${esc(TYPE_FULL_NAMES[rep.report_type])}</div>${content}${renderSigHtml(sig)}</div>${renderFooterHtml()}</div>`;
       return;
     }
     if (rep.report_type === "mba_1p") {
@@ -1525,19 +1601,20 @@
       return;
     }
 
-    // 1-Page Templates (MCCB, LA, FCO, ĐTNĐ)
+    // One-page report layouts
+    const verbPreview = rep.report_type === "acb" ? "thử nghiệm" : "kiểm định";
     let bodyHtml = "";
-    if (rep.report_type === "mccb") {
+    if (["mccb", "acb"].includes(rep.report_type)) {
       bodyHtml = `
-        <div class="a4-equip-title">MÁY CẮT HẠ THẾ (MCCB)</div>
+        <div class="a4-equip-title">${esc(TYPE_FULL_NAMES[rep.report_type])}</div>
         <div class="a4-sec-heading"><span>I. THÔNG TIN CÔNG TRÌNH</span></div>
         <div class="a4-line">- Tên công trình: ${esc(c.ten_cong_trinh)}</div>
         <div class="a4-line">- Địa chỉ: ${esc(c.dia_chi)}</div>
         <div class="a4-line">- Chỉ danh: ${esc(c.chi_danh)}</div>
         <div class="a4-line">- Đơn vị yêu cầu: ${esc(c.don_vi_yeu_cau)}</div>
-        <div class="a4-line">- Lý do kiểm định: ${esc(c.ly_do)}</div>
-        <div class="a4-line">- Nơi kiểm định: ${esc(c.noi_kiem_dinh)}</div>
-        <div class="a4-line">- Ngày kiểm định: ${esc(c.ngay_kiem_dinh)}</div>
+        <div class="a4-line">- Lý do ${verbPreview}: ${esc(c.ly_do)}</div>
+        <div class="a4-line">- Nơi ${verbPreview}: ${esc(c.noi_kiem_dinh)}</div>
+        <div class="a4-line">- Ngày ${verbPreview}: ${esc(c.ngay_kiem_dinh)}</div>
 
         <div class="a4-sec-heading"><span>II. THÔNG SỐ THIẾT BỊ</span></div>
         <div class="a4-two-col"><span>- Hiệu: ${esc(d.hieu)}</span><span>- Số cực: ${esc(d.so_cuc)}</span></div>
@@ -1546,7 +1623,7 @@
         <div class="a4-two-col"><span>- Dòng điện ngắn mạch tối đa: ${esc(d.dong_ngan_mach)}</span><span>- Tần số: ${esc(d.tan_so)}</span></div>
         <div class="a4-two-col"><span>- Điện áp cách điện định mức: ${esc(d.dien_ap_cach_dien)}</span><span>- Điện áp chịu xung định mức: ${esc(d.dien_ap_xung)}</span></div>
 
-        <div class="a4-sec-heading"><span>III. KẾT QUẢ KIỂM ĐỊNH</span></div>
+        <div class="a4-sec-heading"><span>III. KẾT QUẢ ${verbPreview.toUpperCase()}</span></div>
         <div class="a4-two-col"><span>1. Kiểm tra bên ngoài: ${esc(d.kiem_tra_ben_ngoai)}</span><span>- Số lượng: ${esc(d.so_luong)}</span></div>
         <div class="a4-line">2. Kết quả thử nghiệm:</div>
         <table class="a4-table">
@@ -1566,8 +1643,8 @@
             )
             .join("")}
         </table>
-        <div class="a4-line"><strong>IV. THIẾT BỊ KIỂM ĐỊNH:</strong> ${esc(d.thiet_bi_kiem_dinh)}</div>
-        <div class="a4-line"><strong>V. TIÊU CHUẨN KIỂM ĐỊNH:</strong> ${esc(d.tieu_chuan_kiem_dinh)}</div>
+        <div class="a4-line"><strong>IV. THIẾT BỊ ${verbPreview.toUpperCase()}:</strong> ${esc(d.thiet_bi_kiem_dinh)}</div>
+        <div class="a4-line"><strong>V. TIÊU CHUẨN ${verbPreview.toUpperCase()}:</strong> ${esc(d.tieu_chuan_kiem_dinh)}</div>
         <div class="a4-line"><strong>VI. KẾT LUẬN: ${esc(d.ket_luan)}</strong></div>
       `;
     } else if (rep.report_type === "la") {
@@ -1600,9 +1677,9 @@
         <div class="a4-line"><strong>V. THIẾT BỊ KIỂM ĐỊNH: ${esc(d.thiet_bi_kiem_dinh)}</strong></div>
         <div class="a4-line"><strong>VI. KẾT LUẬN: ${esc(d.ket_luan)}</strong></div>
       `;
-    } else if (rep.report_type === "fco") {
+    } else if (["fco", "lbfco"].includes(rep.report_type)) {
       bodyHtml = `
-        <div class="a4-equip-title">CẦU CHÌ TỰ RƠI (FCO)</div>
+        <div class="a4-equip-title">${esc(TYPE_FULL_NAMES[rep.report_type])}</div>
         <div class="a4-sec-heading"><span>I. THÔNG TIN CÔNG TRÌNH</span></div>
         <div class="a4-line">- Tên công trình: ${esc(c.ten_cong_trinh)}</div>
         <div class="a4-line">- Địa chỉ: ${esc(c.dia_chi)}</div>
@@ -1929,12 +2006,11 @@
         source: u.file,
         displayUrl: u.previewUrl,
       }));
-      const shouldReplace =
-        state.reports.length > 0 &&
-        state.reports.every((r) => String(r.id).startsWith("sample-"));
-      await runAiOnImageSources(items, shouldReplace);
-      state.pendingUploads = [];
-      renderPendingUploads();
+      const succeeded = await runAiOnImageSources(items, false);
+      if (succeeded) {
+        state.pendingUploads = [];
+        renderPendingUploads();
+      }
     });
 
     // Re-run AI Vision on Current Report's Attached Images
@@ -1949,7 +2025,8 @@
         source: im.url,
         displayUrl: im.url,
       }));
-      await runAiOnImageSources(items, false);
+      if (!confirm("Đọc lại sẽ thay thế số liệu hiện tại của biên bản này. Bạn có muốn tiếp tục?")) return;
+      await runAiOnImageSources(items, false, rep.id);
     });
 
     // Attach extra photo to current report
@@ -1984,7 +2061,7 @@
           state.reports.length > 0
             ? Math.max(...state.reports.map((r) => Number(r.stt_file) || 0)) + 1
             : Number(state.batchConfig.sttStart || 1);
-        const d = defaultDataForType(rType);
+        const d = blankData(defaultDataForType(rType));
         const newRep = {
           id: uid(),
           stt_file: nextStt,
@@ -1995,13 +2072,13 @@
           common: {
             so_bien_ban: buildSoBienBan(nextStt, state.batchConfig.monthYear),
             ngay_phat_hanh: state.batchConfig.ngayPhatHanh,
-            loai_tieu_de: rType === "dtnd" ? "BIÊN BẢN THỬ NGHIỆM" : "BIÊN BẢN KIỂM ĐỊNH",
+            loai_tieu_de: ["dtnd", "acb"].includes(rType) ? "BIÊN BẢN THỬ NGHIỆM" : "BIÊN BẢN KIỂM ĐỊNH",
             ten_cong_trinh: state.batchConfig.tenCongTrinh,
             dia_chi: state.batchConfig.diaChi,
             chi_danh: TYPE_LABELS[rType],
             don_vi_yeu_cau: state.batchConfig.donViYeuCau,
             ly_do: state.batchConfig.lyDo,
-            noi_kiem_dinh: rType === "dtnd" ? "Hiện trường" : state.batchConfig.noiKiemDinh,
+            noi_kiem_dinh: state.batchConfig.noiKiemDinh,
             ngay_kiem_dinh: state.batchConfig.ngayKiemDinh,
           },
           signatory: {
@@ -2131,7 +2208,7 @@
     document.getElementById("btnApplyBatchSync").addEventListener("click", () => {
       const bc = state.batchConfig;
       bc.sttStart = Number(document.getElementById("batchSttStart").value || 1);
-      bc.monthYear = document.getElementById("batchMonthYear").value.trim() || "1126";
+      bc.monthYear = document.getElementById("batchMonthYear").value.trim();
       bc.ngayKiemDinh = document.getElementById("batchNgayKiemDinh").value.trim();
       bc.ngayPhatHanh = document.getElementById("batchNgayPhatHanh").value.trim();
       bc.tenCongTrinh = document.getElementById("batchTenCongTrinh").value.trim();
@@ -2176,5 +2253,5 @@
 
   // Boot!
   initEvents();
-  loadSampleBatch();
+  renderAll();
 })();

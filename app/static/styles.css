@@ -1115,3 +1115,17 @@ body {
     page-break-after: always;
   }
 }
+
+/* Bảng số liệu nhiều cột cần cuộn ngang thay vì làm tràn khung biên tập. */
+.editor-container .card table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.editor-container .card table th, .editor-container .card table td { border: 1px solid #cbd5e1; padding: 4px; }
+.editor-container .card table input { min-width: 85px; width: 100%; }
+.a4-flow { justify-content: flex-start; overflow: visible; gap: 12mm; }
+.a4-flow .a4-table { margin-bottom: 3mm; }
+.preview-notice { max-width: 210mm; margin: 0; color: #334155; font-size: 12px; }
+.preview-container .docx-wrapper { background: transparent; padding: 0; }
+.preview-container .docx-wrapper > section.docx { margin: 0 0 24px; }
+@media print {
+  .preview-container .docx-wrapper { padding: 0 !important; background: none !important; }
+  .preview-container .docx-wrapper > section.docx { box-shadow: none !important; margin: 0 !important; }
+}

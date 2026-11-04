@@ -131,12 +131,12 @@
       <div class="pane-header no-print">
         <div class="mode-switch">
           <button id="tabEditMode" class="mode-btn active">1. Chỉnh sửa số liệu</button>
-          <button id="tabPreviewMode" class="mode-btn">2. Xem trước A4 (Chuẩn Word)</button>
+          <button id="tabPreviewMode" class="mode-btn">2. Xem trước nội dung</button>
         </div>
 
         <div class="doc-actions">
           <input id="inputFilename" type="text" class="filename-input" title="Tên file Word khi tải về" placeholder="Tên file .docx" />
-          <button id="btnPrintPreview" class="btn btn-sm btn-outline hidden" title="In hoặc lưu PDF trực tiếp">🖨️ In / PDF</button>
+          <button id="btnPrintPreview" class="btn btn-sm btn-outline hidden" title="In bản xem trước (bố cục có thể khác file Word)">🖨️ In / PDF</button>
           <button id="btnExportDocx" class="btn btn-sm btn-success">
             ⬇ Tải file .docx này
           </button>
@@ -323,6 +323,8 @@
   <!-- TOAST NOTIFICATION -->
   <div id="toast" class="toast hidden no-print"></div>
 
+  <script src="/static/vendor/jszip.min.js"></script>
+  <script src="/static/vendor/docx-preview.min.js"></script>
   <script src="/static/vision_ai.js"></script>
   <script src="/static/app.js"></script>
 </body>

@@ -20,204 +20,362 @@ function normalizeGeminiModel(modelName) {
   return m;
 }
 
-const VISION_SYSTEM_PROMPT = `Bạn là kỹ sư thí nghiệm điện cao cấp của CÔNG TY CỔ PHẦN THÍ NGHIỆM ĐIỆN TOÀN CẦU.
-Nhiệm vụ của bạn là đọc toàn bộ các ảnh chụp hiện trường được đánh số image_index = 0, 1, 2, ... (gồm tờ ghi số liệu viết tay, tem thiết bị, ảnh công tơ điện / bảng tên trạm biến áp nếu có) và trích xuất chính xác 100% thành JSON chuẩn để xuất file Word (.docx).
+const VISION_SYSTEM_PROMPT = `Bạn là người hỗ trợ nhập liệu biên bản thí nghiệm điện bằng tiếng Việt. Hãy đọc kỹ từng ảnh gốc, kể cả dấu tiếng Việt, chữ hoa/thường, đơn vị và các chữ số viết tay.
 
-QUY TẮC NGHIỆP VỤ BẮT BUỘC:
-1. GỘP CÁC TRANG CỦA CÙNG MỘT BIÊN BẢN:
-   - Biên bản "MÁY BIẾN ÁP 1 PHA" ("mba_1p") hoặc "MÁY BIẾN ÁP 3 PHA" ("mba_3p") thường gồm 2 tờ ảnh ("Trang 1/2" và "Trang 2/2"). BẮT BUỘC gộp chúng thành DUY NHẤT 1 phần tử trong mảng "reports" và ghi cả 2 chỉ số ảnh vào "source_image_indices" (ví dụ [1, 2]).
-   - Biên bản "THÔNG TUYẾN CÁP NGẦM TRUNG THẾ" ("cap_ngam") thường gồm 2 tờ ảnh ("Trang 1/2" và "Trang 2/2"). BẮT BUỘC gộp thành DUY NHẤT 1 phần tử trong mảng "reports" với "source_image_indices" chứa cả 2 ảnh.
-   - Biên bản "TỦ TỤ BÙ HẠ THẾ" ("tu_bu") nếu chụp nhiều trang cũng gộp thành 1 phần tử duy nhất.
-   - Ảnh chụp Công tơ điện / bảng tên trạm biến áp KHÔNG tạo biên bản riêng mà đưa vào mảng "context_photos", đồng thời dùng thông tin tên doanh nghiệp / trạm trên đó để điền chuẩn xác "ten_cong_trinh" và "don_vi_yeu_cau" cho toàn bộ biên bản trong lô.
+QUY TẮC AN TOÀN:
+- Chỉ chép những gì thực sự nhìn thấy. Không đoán, không suy diễn, không sao chép số liệu, tên, ngày, kết luận hay thông tin thiết bị từ mẫu. Ô không có, bị che hoặc không đọc chắc chắn phải để chuỗi rỗng; mô tả cụ thể ảnh, trường và chỗ chưa rõ trong ai_notes để người dùng đối chiếu.
+- Giữ đúng tên riêng, dấu tiếng Việt, viết hoa/thường, mã máy, số tem, đơn vị và dấu so sánh như trên ảnh. Không tự động đổi đơn vị hoặc mở rộng chữ viết tắt nếu chưa chắc chắn. Khi có chữ gạch sửa, chỉ chép nội dung sửa nếu đọc rõ và ghi chú.
+- Số đo phải chép đúng từng hàng, từng cột và từng pha; phân biệt dấu phẩy thập phân, dấu chấm, dấu lớn hơn và chữ số dễ nhầm. Không tự kết luận đạt hay tự tính giá trị còn thiếu.
+- Gộp các trang thuộc cùng một biên bản; source_image_indices chứa chỉ số tất cả các trang tương ứng. Ảnh nhãn hoặc công tơ không phải biên bản đưa vào context_photos, không tự suy đoán tên công trình.
+- Phân biệt máy biến áp 1 pha và 3 pha, MCCB và ACB, FCO và LBFCO. Nếu không chắc loại, nêu rõ trong ai_notes; không tạo báo cáo nếu ảnh không phải biên bản.
+- Dữ liệu từng ảnh được đánh số từ 0. Không chép các ví dụ hay số mặc định. Duy trì số hàng theo tài liệu, không tự tạo thêm hàng.
+- MBA 3 pha: ghép đúng đối tượng đo với R60, R15 và Kht trên cùng một dòng; các cột AB, BC, CA và K1, K2, K3 phải giữ đúng nấc. Các giá trị an, bn, cn là cuộn hạ áp. Ghép bảng tiếp diễn qua các trang, không bỏ sót hoặc lặp nấc.
+- ACB/MCCB: giữ đúng các cột điện trở cách điện Close/Open, tiếp xúc pha A/B/C, điện áp thử, đóng cắt, kết quả, số tem. LA/FCO/LBFCO: giữ đúng từng thiết bị và từng cột đo. Cáp ngầm: tách bảng cách điện và bảng điện áp một chiều tăng cao.
+- Tủ tụ bù: phân biệt MCCB tổng, MCCB nhánh, Contactor và tụ bù. Chép đủ từng dòng từng bảng; nếu dung lượng được gộp ô dọc, gán dung lượng đó cho từng dòng trong nhóm chỉ khi nhìn rõ phạm vi ô gộp.
+- Nếu dữ liệu viết tay khác nội dung in sẵn hoặc khác trang khác, không tự chọn theo một khuôn mẫu; ghi rõ mâu thuẫn và vị trí trong ai_notes.
 
-2. PHÂN LOẠI ĐÚNG 1 TRONG 10 MẪU BIÊN BẢN (report_type):
-   - "mba_1p": Máy biến áp 1 pha (có Hạ 1 / Hạ 2; tổ đấu dây thường "I/I0").
-   - "mba_3p": Máy biến áp 3 pha (điện trở một chiều có 3 cột AB, BC, CA và cuộn hạ an, bn, cn; tỉ số biến K1, K2, K3; tổ đấu dây thường "Dyn11" hoặc "Y/Yn-0").
-   - "mccb": Máy cắt hạ thế MCCB (BIÊN BẢN KIỂM ĐỊNH).
-   - "acb": Máy cắt hạ thế ACB (BIÊN BẢN THỬ NGHIỆM, thường dòng định mức lớn 630A..4000A, ví dụ ACB 2500A).
-   - "la": Chống sét van LA (1 bộ LA 01 hoặc 3 bộ LA 01, LA 02, LA 03).
-   - "fco": Cầu chì tự rơi FCO (1 bộ hoặc 3 bộ FCO 01..03).
-   - "lbfco": Cầu chì tự rơi có dập hồ quang LBFCO (1 bộ hoặc 3 bộ LBFCO 01..03).
-   - "dtnd": Điện trở nối đất (BIÊN BẢN THỬ NGHIỆM).
-   - "cap_ngam": Thông tuyến cáp ngầm trung thế (Đoạn cáp từ ... đến ..., tiết diện vd "3 x 50mm2", cách điện + thử cao thế DC 15 phút).
-   - "tu_bu": Tủ tụ bù hạ thế (MCCB tổng, MCCB nhánh, Contactor và bảng đo dung lượng bình tụ bù kVAr / µF).
+Trả về duy nhất một đối tượng JSON: {"context_photos":[{"image_index":0,"summary":""}], "reports":[{"report_type":"mba_1p","source_image_indices":[0],"ai_notes":[],"common":{"loai_tieu_de":"","ten_cong_trinh":"","dia_chi":"","chi_danh":"","don_vi_yeu_cau":"","ly_do":"","noi_kiem_dinh":"","ngay_kiem_dinh":""},"data":{}}]}. Các phần tử ví dụ chỉ mô tả cấu trúc, không phải dữ liệu để chép. Chọn đúng report_type trong: mba_1p, mba_3p, mccb, acb, la, fco, lbfco, dtnd, cap_ngam, tu_bu.
 
-3. XỬ LÝ CHỮ GẠCH SỬA TAY & CHUẨN HÓA SỐ LIỆU VIỆT NAM:
-   - Nếu chữ in sẵn hoặc chữ viết tay bị gạch bỏ và ghi chữ khác bên cạnh (VD: gạch "Polymer" ghi "Sứ"; gạch "24" ghi "27"), PHẢI lấy giá trị đã sửa ("Sứ", "27kV") và ghi chú vào "ai_notes".
-   - Các ô trống hoặc gạch ngang trên tờ MCCB/ACB điền "-".
-   - Dùng dấu phẩy (,) cho số thập phân như chuẩn biên bản Việt Nam: "1,35", "3,413", "57,759", "2,62", "15,3kV", "38,1".
-   - Mở rộng viết tắt: "TBA" -> "trạm biến áp", "VN" -> "Việt Nam", "Thibidi" -> "THIBIDI", "Mitsubishi" -> "MITSUBISHI".
-   - MCOV của LA nếu ghi "15300" hoặc "15300V" thì đổi thành "15,3kV".
-
-TRẢ VỀ DUY NHẤT 1 JSON OBJECT HỢP LỆ THEO CẤU TRÚC SAU:
+Các khóa data cho mỗi loại (chỉ là cấu trúc, giá trị rỗng, không phải dữ liệu mẫu):
 {
-  "context_photos": [
-    { "image_index": 0, "summary": "Tóm tắt nội dung đọc được từ ảnh phụ trợ / công tơ / nhãn trạm" }
-  ],
-  "reports": [
-    {
-      "report_type": "mba_1p | mba_3p | mccb | acb | la | fco | lbfco | dtnd | cap_ngam | tu_bu",
-      "source_image_indices": [1, 2],
-      "ai_notes": ["Ghi chú ngắn gọn các điểm AI đã tự chuẩn hóa / gộp trang"],
-      "common": {
-        "loai_tieu_de": "BIÊN BẢN KIỂM ĐỊNH (hoặc BIÊN BẢN THỬ NGHIỆM cho acb và dtnd)",
-        "ten_cong_trinh": "Trạm biến áp ... – ...",
-        "dia_chi": "...",
-        "chi_danh": "MBA 3P 1500kVA | MBA 1P 50kVA | MCCB 250A | ACB 2500A | LA 18kV-10kA | FCO – 100A | LBFCO – 100A | Điện trở nối đất | Thông tuyến cáp ngầm trung thế | Tủ tụ bù 780kVA",
-        "don_vi_yeu_cau": "...",
-        "ly_do": "Định kỳ | Sau sự cố | Đóng điện nghiệm thu mới",
-        "noi_kiem_dinh": "Tại hiện trường",
-        "ngay_kiem_dinh": "DD/MM/YYYY"
-      },
-      "data": {}
-    }
-  ]
+  "mba_1p": {
+    "so_tem": "",
+    "hieu_may": "",
+    "so_may": "",
+    "nuoc_san_xuat": "",
+    "nam_san_xuat": "",
+    "cong_suat_dinh_muc": "",
+    "so_pha": "",
+    "tan_so": "",
+    "dien_ap_dinh_muc": "",
+    "to_dau_day": "",
+    "kiem_tra_ben_ngoai": "",
+    "cach_dien_rows": [
+      {
+        "doi_tuong_do": "",
+        "r60": "",
+        "r15": "",
+        "kht": ""
+      }
+    ],
+    "dien_tro_cao_ap": [
+      ""
+    ],
+    "dien_tro_ha_1": "",
+    "dien_tro_ha_2": "",
+    "ti_so_ha_1": [
+      ""
+    ],
+    "ti_so_ha_2": [
+      ""
+    ],
+    "khong_tai_u0": "",
+    "khong_tai_i0": "",
+    "khong_tai_i0_pct": "",
+    "khong_tai_p0": "",
+    "ngan_mach_un": "",
+    "ngan_mach_un_pct": "",
+    "ngan_mach_in": "",
+    "ngan_mach_pn75": "",
+    "dien_ap_tang_cao_rows": [
+      {
+        "doi_tuong_thu": "",
+        "u_thu": "",
+        "thoi_gian": ""
+      }
+    ],
+    "thiet_bi_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "mba_3p": {
+    "so_tem": "",
+    "hieu_may": "",
+    "so_may": "",
+    "nuoc_san_xuat": "",
+    "nam_san_xuat": "",
+    "cong_suat_dinh_muc": "",
+    "so_pha": "",
+    "tan_so": "",
+    "dien_ap_dinh_muc": "",
+    "to_dau_day": "",
+    "kiem_tra_ben_ngoai": "",
+    "nhiet_do": "",
+    "cach_dien_rows": [
+      {
+        "doi_tuong_do": "",
+        "r60": "",
+        "r15": "",
+        "kht": ""
+      }
+    ],
+    "dc_cao_ap_rows": [
+      {
+        "nac": "",
+        "ab": "",
+        "bc": "",
+        "ca": ""
+      }
+    ],
+    "dc_ha_an": "",
+    "dc_ha_bn": "",
+    "dc_ha_cn": "",
+    "ti_so_rows": [
+      {
+        "nac": "",
+        "k1": "",
+        "k2": "",
+        "k3": ""
+      }
+    ],
+    "khong_tai_u0": "",
+    "khong_tai_i0": "",
+    "khong_tai_i0_pct": "",
+    "khong_tai_p0": "",
+    "ngan_mach_un": "",
+    "ngan_mach_un_pct": "",
+    "ngan_mach_in": "",
+    "ngan_mach_pn75": "",
+    "dien_ap_tang_cao_rows": [
+      {
+        "doi_tuong_thu": "",
+        "u_thu": "",
+        "thoi_gian": ""
+      }
+    ],
+    "thiet_bi_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "mccb": {
+    "hieu": "",
+    "so_cuc": "",
+    "loai": "",
+    "kieu": "",
+    "dien_ap_dinh_muc": "",
+    "dong_dien_dinh_muc": "",
+    "dong_ngan_mach": "",
+    "tan_so": "",
+    "dien_ap_cach_dien": "",
+    "dien_ap_xung": "",
+    "kiem_tra_ben_ngoai": "",
+    "so_luong": "",
+    "rows": [
+      {
+        "stt": "",
+        "rcd_close": "",
+        "rcd_open": "",
+        "rtx_a": "",
+        "rtx_b": "",
+        "rtx_c": "",
+        "utest": "",
+        "dong_cat": "",
+        "ket_qua": "",
+        "so_tem": ""
+      }
+    ],
+    "thiet_bi_kiem_dinh": "",
+    "tieu_chuan_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "acb": {
+    "hieu": "",
+    "so_cuc": "",
+    "loai": "",
+    "kieu": "",
+    "dien_ap_dinh_muc": "",
+    "dong_dien_dinh_muc": "",
+    "dong_ngan_mach": "",
+    "tan_so": "",
+    "dien_ap_cach_dien": "",
+    "dien_ap_xung": "",
+    "kiem_tra_ben_ngoai": "",
+    "so_luong": "",
+    "rows": [
+      {
+        "stt": "",
+        "rcd_close": "",
+        "rcd_open": "",
+        "rtx_a": "",
+        "rtx_b": "",
+        "rtx_c": "",
+        "utest": "",
+        "dong_cat": "",
+        "ket_qua": "",
+        "so_tem": ""
+      }
+    ],
+    "thiet_bi_kiem_dinh": "",
+    "tieu_chuan_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "la": {
+    "vat_lieu_cach_dien": "",
+    "mcov": "",
+    "dien_ap_dinh_muc": "",
+    "tan_so": "",
+    "dong_dien_xa": "",
+    "kiem_tra_ben_ngoai": "",
+    "so_luong": "",
+    "rows": [
+      {
+        "doi_tuong_do": "",
+        "dien_tro_cach_dien": "",
+        "dong_dien_ro": "",
+        "dien_ap_ac": ""
+      }
+    ],
+    "tieu_chuan_kiem_dinh": "",
+    "thiet_bi_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "fco": {
+    "vat_lieu_cach_dien": "",
+    "dong_dien_dinh_muc": "",
+    "dien_ap_dinh_muc": "",
+    "kha_nang_cat_ngan_mach": "",
+    "kiem_tra_ben_ngoai": "",
+    "so_luong": "",
+    "rows": [
+      {
+        "thiet_bi": "",
+        "rcd_truoc": "",
+        "rcd_sau": "",
+        "ac_kho": "",
+        "ac_uot": "",
+        "dong_cat": "",
+        "ket_qua": ""
+      }
+    ],
+    "tieu_chuan_kiem_dinh": "",
+    "thiet_bi_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "lbfco": {
+    "vat_lieu_cach_dien": "",
+    "dong_dien_dinh_muc": "",
+    "dien_ap_dinh_muc": "",
+    "kha_nang_cat_ngan_mach": "",
+    "kiem_tra_ben_ngoai": "",
+    "so_luong": "",
+    "rows": [
+      {
+        "thiet_bi": "",
+        "rcd_truoc": "",
+        "rcd_sau": "",
+        "ac_kho": "",
+        "ac_uot": "",
+        "dong_cat": "",
+        "ket_qua": ""
+      }
+    ],
+    "tieu_chuan_kiem_dinh": "",
+    "thiet_bi_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "dtnd": {
+    "rows": [
+      {
+        "stt": "",
+        "chi_danh": "",
+        "ket_noi_trung_tinh": "",
+        "loai_tiep_dat": "",
+        "gia_tri_do": ""
+      }
+    ],
+    "thiet_bi_thu_nghiem": "",
+    "ghi_chu_1": "",
+    "ghi_chu_2": ""
+  },
+  "cap_ngam": {
+    "so_tem": "",
+    "doan_cap_tu": "",
+    "doan_cap_den": "",
+    "loai_cap": "",
+    "tiet_dien": "",
+    "dien_ap_dinh_muc": "",
+    "tan_so": "",
+    "kiem_tra_ben_ngoai": "",
+    "nhiet_do": "",
+    "cach_dien_rows": [
+      {
+        "doi_tuong_do": "",
+        "tieu_chuan": "",
+        "so_lieu_do": ""
+      }
+    ],
+    "dc_tang_cao_rows": [
+      {
+        "doi_tuong_do": "",
+        "thoi_gian": "",
+        "dien_ap_thu": "",
+        "dong_ro": ""
+      }
+    ],
+    "thiet_bi_kiem_dinh": "",
+    "ket_luan": ""
+  },
+  "tu_bu": {
+    "kiem_tra_ben_ngoai": "",
+    "mccb_tong_thong_so": "",
+    "mccb_tong_so_luong": "",
+    "mccb_tong_rows": [
+      {
+        "stt": "",
+        "rcd_close": "",
+        "rcd_open": "",
+        "rtx_a": "",
+        "rtx_b": "",
+        "rtx_c": "",
+        "utest": "",
+        "dong_cat": "",
+        "ket_qua": ""
+      }
+    ],
+    "mccb_nhanh_thong_so": "",
+    "mccb_nhanh_so_luong": "",
+    "mccb_nhanh_rows": [
+      {
+        "stt": "",
+        "rcd_close": "",
+        "rcd_open": "",
+        "rtx_a": "",
+        "rtx_b": "",
+        "rtx_c": "",
+        "utest": "",
+        "dong_cat": "",
+        "ket_qua": ""
+      }
+    ],
+    "contactor_thong_so": "",
+    "contactor_so_luong": "",
+    "contactor_rows": [
+      {
+        "stt": "",
+        "rcd_close": "",
+        "rcd_open": "",
+        "rtx_a": "",
+        "rtx_b": "",
+        "rtx_c": "",
+        "utest": "",
+        "dong_cat": "",
+        "ket_qua": ""
+      }
+    ],
+    "tu_bu_so_luong": "",
+    "tu_bu_rows": [
+      {
+        "stt": "",
+        "dung_luong": "",
+        "r_cach_dien": "",
+        "dien_dung": "",
+        "ket_qua": ""
+      }
+    ],
+    "thiet_bi_kiem_dinh": "",
+    "tieu_chuan_kiem_dinh": "",
+    "ket_luan": ""
+  }
 }
-
-SCHEMA CHI TIẾT CỦA "data" THEO TỪNG report_type:
-1) "mba_1p":
-{
-  "so_tem": "017246", "hieu_may": "EMC", "so_may": "04080468", "nuoc_san_xuat": "Việt Nam", "nam_san_xuat": "2004",
-  "cong_suat_dinh_muc": "50kVA", "so_pha": "1", "tan_so": "50Hz", "dien_ap_dinh_muc": "12,7/0,23 (kV)", "to_dau_day": "I/I0",
-  "kiem_tra_ben_ngoai": "Bình thường",
-  "cach_dien_rows": [
-    {"doi_tuong_do": "(Cao+Vỏ) –Hạ 1", "r60": "2760", "r15": "2106", "kht": "1,31"},
-    {"doi_tuong_do": "(Cao+vỏ) –Hạ 2", "r60": "2550", "r15": "1902", "kht": "1,34"},
-    {"doi_tuong_do": "Hạ 1 – Hạ 2", "r60": "1790", "r15": "1376", "kht": "1,30"}
-  ],
-  "dien_tro_cao_ap": ["16,42", "15,98", "15,57", "15,12", "14,68"],
-  "dien_tro_ha_1": "8,832", "dien_tro_ha_2": "8,824",
-  "ti_so_ha_1": ["57,95", "56,59", "55,21", "53,83", "52,46"],
-  "ti_so_ha_2": ["57,95", "56,57", "55,25", "53,87", "52,44"],
-  "khong_tai_u0": "230", "khong_tai_i0": "1,58", "khong_tai_i0_pct": "0,73", "khong_tai_p0": "97,6",
-  "ngan_mach_un": "304,7", "ngan_mach_un_pct": "2,4", "ngan_mach_in": "3,94", "ngan_mach_pn75": "563,2",
-  "dien_ap_tang_cao_rows": [
-    {"doi_tuong_thu": "Cuộn dây cao áp", "u_thu": "50", "thoi_gian": "1 phút"},
-    {"doi_tuong_thu": "Cuộn dây hạ áp", "u_thu": "3", "thoi_gian": "1 phút"}
-  ],
-  "thiet_bi_kiem_dinh": "Kyoritsu 3125A, C.A 6255, DTR 8510, HVTS-70/50, Multimeter, Variac.",
-  "ket_luan": "Máy biến áp 1 pha trên đạt yêu cầu đóng điện vận hành."
-}
-
-2) "mba_3p":
-{
-  "so_tem": "016140", "hieu_may": "THIBIDI", "so_may": "103150017", "nuoc_san_xuat": "Việt Nam", "nam_san_xuat": "2010",
-  "cong_suat_dinh_muc": "1500kVA", "so_pha": "03", "tan_so": "50 Hz", "dien_ap_dinh_muc": "22/0.4kV", "to_dau_day": "Dyn11",
-  "kiem_tra_ben_ngoai": "Bình thường", "nhiet_do": "34⁰C",
-  "cach_dien_rows": [
-    {"doi_tuong_do": "Cao – Vỏ", "r60": "15300", "r15": "11300", "kht": "1,35"},
-    {"doi_tuong_do": "Cao – Hạ", "r60": "13700", "r15": "10200", "kht": "1,34"},
-    {"doi_tuong_do": "Hạ – Vỏ", "r60": "8200", "r15": "6200", "kht": "1,32"}
-  ],
-  "dc_cao_ap_rows": [
-    {"nac": "1", "ab": "3,413", "bc": "3,418", "ca": "3,421"},
-    {"nac": "2", "ab": "3,332", "bc": "3,336", "ca": "3,339"},
-    {"nac": "3", "ab": "3,251", "bc": "3,255", "ca": "3,258"},
-    {"nac": "4", "ab": "3,169", "bc": "3,174", "ca": "3,177"},
-    {"nac": "5", "ab": "3,088", "bc": "3,092", "ca": "3,095"}
-  ],
-  "dc_ha_an": "an: 0,885", "dc_ha_bn": "bn: 0,887", "dc_ha_cn": "cn: 0,889",
-  "ti_so_rows": [
-    {"nac": "1", "k1": "57,759", "k2": "57,763", "k3": "57,764"},
-    {"nac": "2", "k1": "56,384", "k2": "56,387", "k3": "56,388"},
-    {"nac": "3", "k1": "55,019", "k2": "55,012", "k3": "55,013"},
-    {"nac": "4", "k1": "53,633", "k2": "53,637", "k3": "53,638"},
-    {"nac": "5", "k1": "52,258", "k2": "52,261", "k3": "52,262"}
-  ],
-  "khong_tai_u0": "400", "khong_tai_i0": "5,19", "khong_tai_i0_pct": "0,24", "khong_tai_p0": "1210,3",
-  "ngan_mach_un": "1280,4", "ngan_mach_un_pct": "5,82", "ngan_mach_in": "39,36", "ngan_mach_pn75": "12423,3",
-  "dien_ap_tang_cao_rows": [
-    {"doi_tuong_thu": "Cao – (Hạ + vỏ)", "u_thu": "50", "thoi_gian": "1 phút"},
-    {"doi_tuong_thu": "Hạ – (Cao + vỏ)", "u_thu": "3", "thoi_gian": "1 phút"}
-  ],
-  "thiet_bi_kiem_dinh": "Kyoritsu 3125A, C.A 6255, DTR 8510, HVTS-70/50, Multimeter, Variac.",
-  "ket_luan": "Máy biến áp 3 pha trên đạt yêu cầu đóng điện vận hành"
-}
-
-3) "mccb" hoặc "acb":
-{
-  "hieu": "LS", "so_cuc": "03", "loai": "ACB", "kieu": "AS-25E3-25H",
-  "dien_ap_dinh_muc": "500V", "dong_dien_dinh_muc": "2500A", "dong_ngan_mach": "85kA",
-  "tan_so": "50/60Hz", "dien_ap_cach_dien": "1000V", "dien_ap_xung": "12kV",
-  "kiem_tra_ben_ngoai": "Bình thường", "so_luong": "01",
-  "rows": [
-    {"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "279", "rtx_b": "281", "rtx_c": "277", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt", "so_tem": "016138"}
-  ],
-  "thiet_bi_kiem_dinh": "Kyoritsu 3165; Kyoritsu 3125A; CA 6255; CA 6292; HVT-70/50",
-  "tieu_chuan_kiem_dinh": "QCVN QTĐ-5: 2009/BCT; QT/TNMCĐ",
-  "ket_luan": "01 máy cắt hạ thế (ACB) trên đạt yêu cầu đóng điện vận hành."
-}
-
-4) "la":
-{
-  "vat_lieu_cach_dien": "Polymer", "mcov": "15,3kV", "dien_ap_dinh_muc": "18kV", "tan_so": "50Hz", "dong_dien_xa": "10kA",
-  "kiem_tra_ben_ngoai": "Bình thường", "so_luong": "03",
-  "rows": [
-    {"doi_tuong_do": "LA 01", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "17", "dien_ap_ac": "35"},
-    {"doi_tuong_do": "LA 02", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "19", "dien_ap_ac": "35"},
-    {"doi_tuong_do": "LA 03", "dien_tro_cach_dien": ">10000", "dong_dien_ro": "13", "dien_ap_ac": "35"}
-  ],
-  "tieu_chuan_kiem_dinh": "QCVN QTĐ-5,6,7: 2009/BCT",
-  "thiet_bi_kiem_dinh": "Kyoritsu 3125A ; HVT-70/50",
-  "ket_luan": "Ba (03) chống sét van trên đạt yêu cầu đóng điện vận hành"
-}
-
-5) "fco" hoặc "lbfco":
-{
-  "vat_lieu_cach_dien": "Polymer", "dong_dien_dinh_muc": "100A", "dien_ap_dinh_muc": "24kV", "kha_nang_cat_ngan_mach": "12kA",
-  "kiem_tra_ben_ngoai": "Bình thường", "so_luong": "03 Bộ",
-  "rows": [
-    {"thiet_bi": "LBFCO 01", "rcd_truoc": ">10000", "rcd_sau": ">10000", "ac_kho": "60", "ac_uot": "50", "dong_cat": "5", "ket_qua": "Đạt"}
-  ],
-  "tieu_chuan_kiem_dinh": "QCVN QTĐ-5,6,7: 2009/BCT",
-  "thiet_bi_kiem_dinh": "Kyoritsu 3125A; I/IOM 100",
-  "ket_luan": "Ba (03) LBFCO trên đạt yêu cầu đóng điện vận hành"
-}
-
-6) "dtnd":
-{
-  "rows": [
-    {"stt": "1", "chi_danh": "Điện trở nối đất trạm biến áp", "ket_noi_trung_tinh": "Có", "loai_tiep_dat": "Làm việc", "gia_tri_do": "2,62"}
-  ],
-  "thiet_bi_thu_nghiem": "KEW 4105DL",
-  "ghi_chu_1": "Chỉ danh, vị trí cọc nối đất do đơn vị yêu cầu thử nghiệm cung cấp",
-  "ghi_chu_2": "Các kết quả đo chỉ có giá trị đối với điểm đo"
-}
-
-7) "cap_ngam":
-{
-  "so_tem": "016139", "doan_cap_tu": "Trụ 82/1", "doan_cap_den": "Trạm biến áp 1500kVA",
-  "loai_cap": "Cáp ngầm trung thế", "tiet_dien": "3 x 50mm2", "dien_ap_dinh_muc": "12,7/22(24)kV", "tan_so": "50Hz",
-  "kiem_tra_ben_ngoai": "Bình thường", "nhiet_do": "34⁰C",
-  "cach_dien_rows": [
-    {"doi_tuong_do": "Pha 1 – (2+3+vỏ)", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
-    {"doi_tuong_do": "Pha 2 – (1+3+vỏ)", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
-    {"doi_tuong_do": "Pha 3 – (1+2+vỏ)", "tieu_chuan": ">5000", "so_lieu_do": ">10000"}
-  ],
-  "dc_tang_cao_rows": [
-    {"doi_tuong_do": "Pha 1 – (2+3+vỏ)", "thoi_gian": "15", "dien_ap_thu": "38,1", "dong_ro": "17"},
-    {"doi_tuong_do": "Pha 2 – (1+3+vỏ)", "thoi_gian": "15", "dien_ap_thu": "38,1", "dong_ro": "12"},
-    {"doi_tuong_do": "Pha 3 – (1+2+vỏ)", "thoi_gian": "15", "dien_ap_thu": "38,1", "dong_ro": "15"}
-  ],
-  "thiet_bi_kiem_dinh": "Kyoritsu 3125A, HTV-70/50",
-  "ket_luan": "01 đoạn cáp 3 pha đạt yêu cầu đóng điện vận hành"
-}
-
-8) "tu_bu":
-{
-  "kiem_tra_ben_ngoai": "Bình thường",
-  "mccb_tong_thong_so": "1200A, ABS 1203b, 415V, 65kA, 50Hz", "mccb_tong_so_luong": "01",
-  "mccb_tong_rows": [{"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "325", "rtx_b": "329", "rtx_c": "327", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"}],
-  "mccb_nhanh_thong_so": "200A, ABN 203c, 380V, 30kA, 50Hz", "mccb_nhanh_so_luong": "06",
-  "mccb_nhanh_rows": [{"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "271", "rtx_b": "275", "rtx_c": "272", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"}],
-  "contactor_thong_so": "LS, MC-150a", "contactor_so_luong": "06",
-  "contactor_rows": [{"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000", "rtx_a": "277", "rtx_b": "272", "rtx_c": "274", "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"}],
-  "tu_bu_so_luong": "30",
-  "tu_bu_rows": [{"stt": "1", "dung_luong": "10", "r_cach_dien": ">2000", "dien_dung": "164,3", "ket_qua": "Đạt"}],
-  "thiet_bi_kiem_dinh": "Kyoritsu 3165; Kyoritsu 3125A; CA 6255; CA 6292; HVT-70/50; CA 6555; Megger DPM1000.",
-  "tieu_chuan_kiem_dinh": "QCVN QTĐ-5: 2009/BCT; QT/TNMCĐ",
-  "ket_luan": "Tủ tụ bù trên đạt yêu cầu đóng điện vận hành"
-}`;
+`;
 
 function parseJsonLoose(raw) {
   let txt = String(raw || "").trim();
@@ -232,7 +390,7 @@ function parseJsonLoose(raw) {
   return JSON.parse(txt);
 }
 
-async function prepareImageForVision(source, maxEdge = 2048, quality = 0.88) {
+async function prepareImageForVision(source, maxEdge = 3000, quality = 0.92) {
   let blobUrl = null;
   let shouldRevoke = false;
 

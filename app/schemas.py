@@ -33,16 +33,16 @@ class CompanyInfo(BaseModel):
 
 
 class CommonHeader(BaseModel):
-    so_bien_ban: str = "50441126/BB-TC"
-    ngay_phat_hanh: str = "04/11/2026"
+    so_bien_ban: str = ""
+    ngay_phat_hanh: str = ""
     loai_tieu_de: str = "BIÊN BẢN KIỂM ĐỊNH"
-    ten_cong_trinh: str = "Trạm biến áp 50kVA – DOANH NGHIỆP TƯ NHÂN E-GREEN"
-    dia_chi: str = "Khu phố Gia Huỳnh, Phường Trảng Bàng, Tỉnh Tây Ninh, Việt Nam"
+    ten_cong_trinh: str = ""
+    dia_chi: str = ""
     chi_danh: str = ""
-    don_vi_yeu_cau: str = "DOANH NGHIỆP TƯ NHÂN E-GREEN"
-    ly_do: str = "Sau sự cố"
-    noi_kiem_dinh: str = "Tại hiện trường"
-    ngay_kiem_dinh: str = "01/11/2026"
+    don_vi_yeu_cau: str = ""
+    ly_do: str = ""
+    noi_kiem_dinh: str = ""
+    ngay_kiem_dinh: str = ""
 
 
 # --- 1. Máy biến áp 1 pha (MBA 1P) ---

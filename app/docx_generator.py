@@ -5,6 +5,8 @@ import os
 import zipfile
 from typing import Dict, List, Optional, Tuple, Union
 from lxml import etree
+from pydantic import BaseModel
+from typing import get_args, get_origin
 
 from app.schemas import (
     CapNgamData,
@@ -23,6 +25,24 @@ NS = {"w": W_NS}
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
 RunSpec = Union[Tuple[str, bool], Tuple[str, bool, Optional[str]]]
+
+
+def _read_data(model: type[BaseModel], values: dict) -> BaseModel:
+    """Missing observations must never be filled with values from example schemas."""
+    clean = {}
+    for name, field in model.model_fields.items():
+        annotation = field.annotation
+        if get_origin(annotation) is list:
+            item_type = get_args(annotation)[0]
+            rows = values.get(name, [])
+            if isinstance(item_type, type) and issubclass(item_type, BaseModel):
+                clean[name] = [_read_data(item_type, row if isinstance(row, dict) else {}) for row in rows]
+            else:
+                clean[name] = rows
+        else:
+            value = values.get(name, "")
+            clean[name] = "" if value is None else value
+    return model(**clean)
 
 
 def _w(tag: str) -> str:
@@ -405,7 +425,7 @@ def _format_temp_runs(prefix: str, temp_val: str) -> List[RunSpec]:
 # =========================================================================
 def _generate_mccb_or_acb(req: ReportDocumentRequest, is_acb: bool = False) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "mccb.docx")
-    d = MccbData(**req.data)
+    d = _read_data(MccbData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -425,8 +445,7 @@ def _generate_mccb_or_acb(req: ReportDocumentRequest, is_acb: bool = False) -> b
     set_p_runs(body[2], [("THÔNG TIN CÔNG TRÌNH", True)], sz=24)
     set_p_runs(body[3], [(f"Tên công trình: {c.ten_cong_trinh}", False)], sz=24)
     set_p_runs(body[4], [(f"Địa chỉ: {c.dia_chi}", False)], sz=24)
-    default_cd = "ACB 2500A" if is_acb else "MCCB 250A"
-    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh or default_cd}", False)], sz=24)
+    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh}", False)], sz=24)
     set_p_runs(body[6], [(f"Đơn vị yêu cầu: {c.don_vi_yeu_cau}", False)], sz=24)
     set_p_runs(body[7], [(f"Lý do {verb}: {c.ly_do}", False)], sz=24)
     set_p_runs(body[8], [(f"Nơi {verb}: {c.noi_kiem_dinh}", False)], sz=24)
@@ -450,11 +469,11 @@ def _generate_mccb_or_acb(req: ReportDocumentRequest, is_acb: bool = False) -> b
     populate_dynamic_rows(body[19], header_row_count=2, row_values=row_vals, sz=24)
 
     set_p_runs(body[21], [(f"THIẾT BỊ {verb_upper}: ", True), (d.thiet_bi_kiem_dinh, False)], sz=24)
-    set_p_runs(body[22], [(f"TIÊU CHUẨN {verb_upper}: ", True), (d.tieu_chuan_kiem_dinh, False)], sz=24)
-    body.remove(body[23])  # Keep standard inline on body[22] so multi-row ACB/MCCB fits cleanly on 1 page
-    set_p_runs(body[23], [(f"KẾT LUẬN: {d.ket_luan}", True)], sz=24)
+    set_p_runs(body[22], [(f"TIÊU CHUẨN {verb_upper}:", True)], sz=24)
+    set_p_runs(body[23], [(d.tieu_chuan_kiem_dinh, False)], sz=24)
+    set_p_runs(body[24], [(f"KẾT LUẬN: {d.ket_luan}", True)], sz=24)
 
-    update_table_signature(body[24], req)
+    update_table_signature(body[25], req)
     return _repack_docx(tpl, root, _decode_custom_signature(req.signatory.custom_signature_data_url))
 
 
@@ -463,7 +482,7 @@ def _generate_mccb_or_acb(req: ReportDocumentRequest, is_acb: bool = False) -> b
 # =========================================================================
 def _generate_la(req: ReportDocumentRequest) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "la.docx")
-    d = LaData(**req.data)
+    d = _read_data(LaData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -475,7 +494,7 @@ def _generate_la(req: ReportDocumentRequest) -> bytes:
     set_p_runs(body[2], [("THÔNG TIN CÔNG TRÌNH", True)], sz=24)
     set_p_runs(body[3], [(f"Tên công trình: {c.ten_cong_trinh}", False)], sz=24)
     set_p_runs(body[4], [(f"Địa chỉ: {c.dia_chi}", False)], sz=24)
-    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh or 'LA 18kV-10kA'}", False)], sz=24)
+    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh}", False)], sz=24)
     set_p_runs(body[6], [(f"Đơn vị yêu cầu: {c.don_vi_yeu_cau}", False)], sz=24)
     set_p_runs(body[7], [(f"Lý do kiểm định: {c.ly_do}", False)], sz=24)
     set_p_runs(body[8], [(f"Nơi kiểm định: {c.noi_kiem_dinh}", False)], sz=24)
@@ -506,7 +525,7 @@ def _generate_la(req: ReportDocumentRequest) -> bytes:
 # =========================================================================
 def _generate_fco_or_lbfco(req: ReportDocumentRequest, is_lbfco: bool = False) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "fco.docx")
-    d = FcoData(**req.data)
+    d = _read_data(FcoData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -520,8 +539,7 @@ def _generate_fco_or_lbfco(req: ReportDocumentRequest, is_lbfco: bool = False) -
     set_p_runs(body[2], [("THÔNG TIN CÔNG TRÌNH", True)], sz=24)
     set_p_runs(body[3], [(f"Tên công trình: {c.ten_cong_trinh}", False)], sz=24)
     set_p_runs(body[4], [(f"Địa chỉ: {c.dia_chi}", False)], sz=24)
-    default_cd = "LBFCO – 100A" if is_lbfco else "FCO – 100A"
-    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh or default_cd}", False)], sz=24)
+    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh}", False)], sz=24)
     set_p_runs(body[6], [(f"Đơn vị yêu cầu: {c.don_vi_yeu_cau}", False)], sz=24)
     set_p_runs(body[7], [(f"Lý do kiểm định: {c.ly_do}", False)], sz=24)
     set_p_runs(body[8], [(f"Nơi kiểm định: {c.noi_kiem_dinh}", False)], sz=24)
@@ -554,7 +572,7 @@ def _generate_fco_or_lbfco(req: ReportDocumentRequest, is_lbfco: bool = False) -
 # =========================================================================
 def _generate_dtnd(req: ReportDocumentRequest) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "dtnd.docx")
-    d = DtndData(**req.data)
+    d = _read_data(DtndData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -570,7 +588,7 @@ def _generate_dtnd(req: ReportDocumentRequest) -> bytes:
     set_p_runs(body[2], [("THÔNG TIN CÔNG TRÌNH", True)], sz=24)
     set_p_runs(body[3], [(f"Tên công trình: {c.ten_cong_trinh}", False)], sz=24)
     set_p_runs(body[4], [(f"Địa chỉ: {c.dia_chi}", False)], sz=24)
-    set_p_runs(body[6], [(f"Chỉ danh: {c.chi_danh or 'Điện trở nối đất'}", False)], sz=24)
+    set_p_runs(body[6], [(f"Chỉ danh: {c.chi_danh}", False)], sz=24)
     set_p_runs(body[7], [(f"Đơn vị yêu cầu: {c.don_vi_yeu_cau}", False)], sz=24)
     set_p_runs(body[8], [(f"Lý do thử nghiệm: {c.ly_do}", False)], sz=24)
     set_p_runs(body[9], [(f"Nơi thử nghiệm: {c.noi_kiem_dinh}", False)], sz=24)
@@ -595,7 +613,7 @@ def _generate_dtnd(req: ReportDocumentRequest) -> bytes:
 # =========================================================================
 def _generate_mba_1p(req: ReportDocumentRequest) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "mba_1p_shell.docx")
-    d = Mba1PData(**req.data)
+    d = _read_data(Mba1PData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -671,7 +689,7 @@ def _generate_mba_1p(req: ReportDocumentRequest) -> bytes:
         [([("", True)], 1, None), ([("Cuộn dây cao áp (Ω)", True)], n_taps, None), ([("Cuộn dây hạ áp (mΩ)", True)], 2, None)],
         [([("Nấc", False)], 1, None)] + [([(str(i + 1), False)], 1, None) for i in range(n_taps)] + [([("HA 1", False)], 1, None), ([("HA 2", False)], 1, None)],
         [([("Kết quả đo", False)], 1, None)]
-        + [([(d.dien_tro_cao_ap[i], False)], 1, None) for i in range(n_taps)]
+        + [([((d.dien_tro_cao_ap[i] if i < len(d.dien_tro_cao_ap) else ""), False)], 1, None) for i in range(n_taps)]
         + [([(d.dien_tro_ha_1, False)], 1, None), ([(d.dien_tro_ha_2, False)], 1, None)],
     ]
     body.append(_make_bordered_table(dc_widths, dc_rows, sz=22))
@@ -685,8 +703,8 @@ def _generate_mba_1p(req: ReportDocumentRequest) -> bytes:
         [([("Cao", True)], 1, None), ([("Hạ 1", True)], n_h1, None), ([("Hạ 2", True)], n_h2, None)],
         [([("Nấc", False)], 1, None)] + [([(str(i + 1), False)], 1, None) for i in range(n_h1)] + [([(str(i + 1), False)], 1, None) for i in range(n_h2)],
         [([("Kết quả đo", False)], 1, None)]
-        + [([(d.ti_so_ha_1[i], False)], 1, None) for i in range(n_h1)]
-        + [([(d.ti_so_ha_2[i], False)], 1, None) for i in range(n_h2)],
+        + [([((d.ti_so_ha_1[i] if i < len(d.ti_so_ha_1) else ""), False)], 1, None) for i in range(n_h1)]
+        + [([((d.ti_so_ha_2[i] if i < len(d.ti_so_ha_2) else ""), False)], 1, None) for i in range(n_h2)],
     ]
     body.append(_make_bordered_table(ratio_widths, ratio_rows, sz=21))
 
@@ -752,7 +770,7 @@ def _generate_mba_1p(req: ReportDocumentRequest) -> bytes:
 # =========================================================================
 def _generate_mba_3p(req: ReportDocumentRequest) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "mba_1p_shell.docx")
-    d = Mba3PData(**req.data)
+    d = _read_data(Mba3PData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -964,7 +982,7 @@ def _generate_mba_3p(req: ReportDocumentRequest) -> bytes:
 # =========================================================================
 def _generate_cap_ngam(req: ReportDocumentRequest) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "mba_1p_shell.docx")
-    d = CapNgamData(**req.data)
+    d = _read_data(CapNgamData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -986,7 +1004,7 @@ def _generate_cap_ngam(req: ReportDocumentRequest) -> bytes:
     body.append(_make_p([("THÔNG TIN CÔNG TRÌNH", True)], sz=24, num_id=2, space_before=30, space_after=30))
     body.append(_make_p([(f"Tên công trình: {c.ten_cong_trinh}", False)], sz=24, num_id=3, space_before=25, space_after=25))
     body.append(_make_p([(f"Địa chỉ: {c.dia_chi}", False)], sz=24, num_id=3, space_before=25, space_after=25))
-    body.append(_make_p([(f"Chỉ danh: {c.chi_danh or 'Thông tuyến cáp ngầm trung thế'}", False)], sz=24, num_id=3, space_before=25, space_after=25))
+    body.append(_make_p([(f"Chỉ danh: {c.chi_danh}", False)], sz=24, num_id=3, space_before=25, space_after=25))
     body.append(_make_p([(f"Đơn vị yêu cầu: {c.don_vi_yeu_cau}", False)], sz=24, num_id=3, space_before=25, space_after=25))
     body.append(_make_p([(f"Lý do kiểm định: {c.ly_do}", False)], sz=24, num_id=3, space_before=25, space_after=25))
     body.append(_make_p([(f"Nơi kiểm định: {c.noi_kiem_dinh}", False)], sz=24, num_id=3, space_before=25, space_after=25))
@@ -1073,7 +1091,7 @@ def _generate_cap_ngam(req: ReportDocumentRequest) -> bytes:
 # =========================================================================
 def _generate_tu_bu(req: ReportDocumentRequest) -> bytes:
     tpl = os.path.join(TEMPLATES_DIR, "tu_bu.docx")
-    d = TuBuData(**req.data)
+    d = _read_data(TuBuData, req.data)
     c = req.common
 
     with zipfile.ZipFile(tpl, "r") as z:
@@ -1085,7 +1103,7 @@ def _generate_tu_bu(req: ReportDocumentRequest) -> bytes:
     set_p_runs(body[2], [("THÔNG TIN CÔNG TRÌNH", True)], sz=24)
     set_p_runs(body[3], [(f"Tên công trình: {c.ten_cong_trinh}", False)], sz=24)
     set_p_runs(body[4], [(f"Địa chỉ: {c.dia_chi}", False)], sz=24)
-    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh or 'Tủ tụ bù'}", False)], sz=24)
+    set_p_runs(body[5], [(f"Chỉ danh: {c.chi_danh}", False)], sz=24)
     set_p_runs(body[6], [(f"Đơn vị yêu cầu: {c.don_vi_yeu_cau}", False)], sz=24)
     set_p_runs(body[7], [(f"Lý do kiểm định: {c.ly_do}", False)], sz=24)
     set_p_runs(body[8], [(f"Nơi kiểm định: {c.noi_kiem_dinh}", False)], sz=24)

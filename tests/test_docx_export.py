@@ -128,3 +128,74 @@ def test_dynamic_multi_row_and_signature_toggle_and_zip():
         inner_docx = zbatch.read("47 BB FCO 3 pha.docx")
         with zipfile.ZipFile(io.BytesIO(inner_docx)) as zdoc:
             assert zdoc.read("word/media/image2.png") == b"\x89PNG\r\n\x1a\nFAKE_CUSTOM_SIG"
+
+
+@pytest.mark.parametrize("report_type", ["mba_1p", "mba_3p", "mccb", "acb", "la", "fco", "lbfco", "dtnd", "cap_ngam", "tu_bu"])
+def test_empty_data_does_not_import_example_measurements(report_type):
+    response = client.post("/api/export/docx", json={
+        "report_type": report_type,
+        "common": {"ten_cong_trinh": "Công trình thử nghiệm riêng", "dia_chi": "", "don_vi_yeu_cau": ""},
+        "data": {},
+    })
+    assert response.status_code == 200, response.text
+    with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+        xml = z.read("word/document.xml").decode()
+        assert "Công trình thử nghiệm riêng" in xml
+        # These values are from the examples, not from the request.
+        for value in ("103150017", "3,413", "017246", "MITSUBISHI", "164,3", "Trụ 82/1"):
+            assert value not in xml
+
+
+def test_partial_measurement_row_is_not_completed_from_examples():
+    response = client.post("/api/export/docx", json={
+        "report_type": "acb", "data": {"rows": [{"rtx_a": "123,45"}]}
+    })
+    assert response.status_code == 200
+    doc = docx.Document(io.BytesIO(response.content))
+    cells = [cell.text for cell in doc.tables[1].rows[2].cells]
+    assert cells[3] == "123,45"
+    assert cells[1] == cells[2] == cells[4] == cells[8] == ""
+
+
+def test_mccb_retains_original_standard_section_layout():
+    sample = next(r for r in client.get('/api/samples?station=egreen').json()['reports'] if r['report_type'] == 'mccb')
+    response = client.post('/api/export/docx', json=sample)
+    doc = docx.Document(io.BytesIO(response.content))
+    paragraphs = [p.text for p in doc.paragraphs]
+    assert 'TIÊU CHUẨN KIỂM ĐỊNH:' in paragraphs
+    idx = paragraphs.index('TIÊU CHUẨN KIỂM ĐỊNH:')
+    assert sample['data']['tieu_chuan_kiem_dinh'] in paragraphs[idx + 1]
+    assert paragraphs[idx + 2].startswith('KẾT LUẬN:')
+
+
+def test_tu_bu_preserves_row_values_and_order():
+    sample = next(r for r in client.get('/api/samples').json()['reports'] if r['report_type'] == 'tu_bu')
+    sample['data']['tu_bu_rows'] = [
+        {'stt': '1', 'dung_luong': '10', 'r_cach_dien': '>2000', 'dien_dung': '164,3', 'ket_qua': 'Đạt'},
+        {'stt': '2', 'dung_luong': '20', 'r_cach_dien': '>3000', 'dien_dung': '312,9', 'ket_qua': 'Đạt'},
+    ]
+    response = client.post('/api/export/docx', json=sample)
+    doc = docx.Document(io.BytesIO(response.content))
+    rows = doc.tables[4].rows
+    assert [c.text for c in rows[1].cells] == ['1', '10', '>2000', '164,3', 'Đạt']
+    assert [c.text for c in rows[2].cells] == ['2', '20', '>3000', '312,9', 'Đạt']
+
+
+def test_vietnamese_text_and_case_are_preserved():
+    sample = next(r for r in client.get('/api/samples?station=egreen').json()['reports'] if r['report_type'] == 'la')
+    sample['common']['ten_cong_trinh'] = 'Trạm biến áp An Hội – CÔNG TY TNHH Điện Ánh Dương'
+    sample['data']['ket_luan'] = 'Đã kiểm tra; cần đối chiếu trước khi đóng điện.'
+    sample['data']['rows'][0]['doi_tuong_do'] = 'Pha C – Đầu trên'
+    response = client.post('/api/export/docx', json=sample)
+    assert response.status_code == 200
+    doc = docx.Document(io.BytesIO(response.content))
+    paragraphs = '\n'.join(p.text for p in doc.paragraphs)
+    assert sample['common']['ten_cong_trinh'] in paragraphs
+    assert sample['data']['ket_luan'] in paragraphs
+    assert doc.tables[1].rows[1].cells[0].text == 'Pha C – Đầu trên'
+    assert 'CHỐNG SÉT VAN (LA)' in paragraphs
+
+
+def test_sample_mba_discrepancy_is_disclosed():
+    sample = client.get('/api/samples?station=dream_mekong').json()['reports'][0]
+    assert any('khác' in note and 'nhiệt độ' in note for note in sample['ai_notes'])
