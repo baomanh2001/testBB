@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Toàn Cầu — Đọc Ảnh Biên Bản Hiện Trường & Xuất Word (.docx)</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <!-- TOP HEADER -->
+  <header class="topbar no-print">
+    <div class="brand">
+      <img src="/static/assets/logo.jpeg" alt="Logo Toàn Cầu" class="brand-logo" />
+      <div class="brand-text">
+        <h1>CÔNG TY CP THÍ NGHIỆM ĐIỆN TOÀN CẦU</h1>
+        <p>Hệ thống đọc ảnh biên bản viết tay hiện trường &amp; xuất file Word (.docx) chuẩn mẫu</p>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="btnLoadSamples" class="btn btn-outline" title="Nạp bộ 7 ảnh hiện trường & 5 biên bản mẫu trạm E-GREEN">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Nạp mẫu E-GREEN (7 ảnh)</span>
+      </button>
+
+      <button id="btnBatchSettings" class="btn btn-outline" title="Đồng bộ thông tin trạm, người ký & đánh số biên bản hàng loạt">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>Thông tin chung &amp; Người ký</span>
+      </button>
+
+      <button id="btnAiConfig" class="btn btn-ai-status">
+        <span id="aiStatusDot" class="status-dot"></span>
+        <span id="aiStatusLabel">Cấu hình AI Vision</span>
+      </button>
+
+      <button id="btnExportZip" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="exportZipText">Tải trọn bộ (.zip)</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- UPLOAD & AI BATCH BAR -->
+  <section class="upload-strip no-print">
+    <div id="dropZone" class="dropzone">
+      <input type="file" id="fileInput" accept="image/*" multiple hidden />
+      <div class="dropzone-content">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <div>
+          <strong>Kéo thả hoặc bấm chọn bộ ảnh biên bản viết tay (+ ảnh công tơ / nhãn trạm)</strong>
+          <span class="sub">Hỗ trợ nhiều ảnh cùng lúc — Tự động gộp biên bản nhiều trang (MBA 1P) &amp; chuẩn hóa thông số</span>
+        </div>
+      </div>
+      <div class="dropzone-buttons">
+        <button id="btnPickFiles" class="btn btn-sm btn-secondary" type="button">Chọn ảnh từ máy</button>
+        <button id="btnRunAiOnPending" class="btn btn-sm btn-accent" type="button" disabled>
+          ✨ Đọc ảnh bằng AI (<span id="pendingCount">0</span>)
+        </button>
+      </div>
+    </div>
+
+    <div id="pendingGallery" class="pending-gallery hidden"></div>
+    <div id="aiProgressBanner" class="ai-progress hidden">
+      <div class="spinner"></div>
+      <span id="aiProgressText">Đang phân tích ảnh bằng AI Vision...</span>
+    </div>
+  </section>
+
+  <!-- REPORT TABS BAR -->
+  <nav class="tabs-bar no-print">
+    <div id="reportTabs" class="report-tabs"></div>
+    <div class="tabs-actions">
+      <div class="dropdown">
+        <button id="btnAddManual" class="btn btn-sm btn-outline">+ Thêm biên bản mới ▾</button>
+        <div id="addManualMenu" class="dropdown-menu hidden">
+          <button data-type="mba_1p">1. Máy biến áp 1 pha (MBA 1P)</button>
+          <button data-type="mccb">2. Máy cắt hạ thế (MCCB)</button>
+          <button data-type="la">3. Chống sét van (LA)</button>
+          <button data-type="fco">4. Cầu chì tự rơi (FCO)</button>
+          <button data-type="dtnd">5. Điện trở nối đất (ĐTNĐ)</button>
+        </div>
+      </div>
+      <button id="btnRenumberAll" class="btn btn-sm btn-outline" title="Cập nhật lại Số biên bản & Tên file theo thứ tự">
+        Đánh lại Số BB
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN SPLIT WORKSPACE -->
+  <main id="workspace" class="workspace">
+    <!-- LEFT: IMAGE INSPECTOR -->
+    <section class="pane pane-left no-print">
+      <div class="pane-header">
+        <div id="imageTabs" class="image-tabs"></div>
+        <div class="viewer-controls">
+          <input type="file" id="attachPhotoInput" accept="image/*" multiple hidden />
+          <button id="btnAttachPhoto" class="icon-btn" title="Gắn thêm ảnh vào biên bản này">+ Ảnh</button>
+          <button id="btnZoomOut" class="icon-btn" title="Thu nhỏ">−</button>
+          <span id="zoomLabel" class="zoom-label">100%</span>
+          <button id="btnZoomIn" class="icon-btn" title="Phóng to">+</button>
+          <button id="btnZoomReset" class="icon-btn" title="Vừa khung">Vừa khung</button>
+          <button id="btnRotateLeft" class="icon-btn" title="Xoay trái 90°">↺</button>
+          <button id="btnRotateRight" class="icon-btn" title="Xoay phải 90°">↻</button>
+          <button id="btnReocrCurrent" class="icon-btn icon-btn-ai" title="Dùng AI đọc lại các ảnh của biên bản đang chọn">✨ Đọc lại AI</button>
+        </div>
+      </div>
+
+      <div id="imageViewport" class="image-viewport">
+        <div id="emptyImageState" class="empty-image-state hidden">
+          <p>Chưa có ảnh đính kèm cho biên bản này.</p>
+          <button id="btnAttachPhotoEmpty" class="btn btn-sm btn-secondary">+ Đính kèm ảnh biên bản viết tay</button>
+        </div>
+        <img id="viewerImg" class="viewer-img" alt="Ảnh hiện trường" draggable="false" />
+      </div>
+    </section>
+
+    <!-- RIGHT: FORM EDITOR & LIVE A4 PREVIEW -->
+    <section class="pane pane-right">
+      <div class="pane-header no-print">
+        <div class="mode-switch">
+          <button id="tabEditMode" class="mode-btn active">1. Chỉnh sửa số liệu</button>
+          <button id="tabPreviewMode" class="mode-btn">2. Xem trước A4 (Chuẩn Word)</button>
+        </div>
+
+        <div class="doc-actions">
+          <input id="inputFilename" type="text" class="filename-input" title="Tên file Word khi tải về" placeholder="Tên file .docx" />
+          <button id="btnPrintPreview" class="btn btn-sm btn-outline hidden" title="In hoặc lưu PDF trực tiếp">🖨️ In / PDF</button>
+          <button id="btnExportDocx" class="btn btn-sm btn-success">
+            ⬇ Tải file .docx này
+          </button>
+          <button id="btnDeleteReport" class="btn btn-sm btn-danger-ghost" title="Xóa biên bản này khỏi danh sách">✕</button>
+        </div>
+      </div>
+
+      <!-- AI NOTES CALLOUT -->
+      <div id="aiNotesBox" class="ai-notes no-print hidden"></div>
+
+      <!-- TAB 1: STRUCTURED FORM EDITOR -->
+      <div id="editorContainer" class="editor-container no-print"></div>
+
+      <!-- TAB 2: PRINT-ACCURATE A4 PREVIEW -->
+      <div id="previewContainer" class="preview-container hidden"></div>
+    </section>
+  </main>
+
+  <!-- EMPTY BATCH LANDING -->
+  <section id="emptyWorkspace" class="empty-workspace hidden no-print">
+    <div class="empty-card">
+      <img src="/static/assets/logo.jpeg" alt="Toàn Cầu" width="72" />
+      <h2>Chưa có biên bản nào trong phiên làm việc</h2>
+      <p>Tải ảnh chụp biên bản viết tay ở thanh phía trên để AI tự động trích xuất, hoặc bấm nạp bộ mẫu trạm E-GREEN để trải nghiệm ngay.</p>
+      <div class="empty-actions">
+        <button id="btnEmptyLoadSample" class="btn btn-primary">Nạp thử 7 ảnh mẫu E-GREEN</button>
+        <button id="btnEmptyUpload" class="btn btn-outline">Tải ảnh biên bản từ máy</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODAL 1: AI CONFIGURATION -->
+  <div id="modalAiConfig" class="modal-backdrop hidden no-print">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Cấu hình AI Vision Đọc Chữ Viết Tay</h3>
+        <button class="modal-close" data-close="modalAiConfig">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid-2">
+          <div class="field">
+            <label>Nhà cung cấp AI Vision</label>
+            <select id="cfgProvider">
+              <option value="gemini">Google Gemini API (Khuyên dùng - Có gói miễn phí)</option>
+              <option value="openai">OpenAI Vision API (GPT-4o / GPT-4.1)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Model nhận diện</label>
+            <select id="cfgModel"></select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label id="cfgApiKeyLabel">API Key</label>
+          <input type="password" id="cfgApiKey" placeholder="Dán API Key của bạn vào đây..." autocomplete="off" />
+          <small id="cfgHelpText" class="help-text">
+            Lấy mã Gemini miễn phí tại <strong>aistudio.google.com/apikey</strong>. API Key chỉ lưu cục bộ trên trình duyệt của bạn.
+          </small>
+        </div>
+
+        <div id="cfgBaseUrlWrap" class="field hidden">
+          <label>OpenAI Base URL (Tùy chọn)</label>
+          <input type="text" id="cfgBaseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+
+        <div class="field">
+          <label>Gợi ý ngữ cảnh bổ sung cho AI (Tùy chọn — VD: địa chỉ chi tiết khu phố/phường)</label>
+          <input type="text" id="cfgExtraHint" placeholder="VD: Khu phố Gia Huỳnh, Phường Trảng Bàng, Tỉnh Tây Ninh, Việt Nam" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnClearAiKey" class="btn btn-danger-ghost" type="button">Xóa Key đã lưu</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline" data-close="modalAiConfig" type="button">Đóng</button>
+          <button id="btnSaveAiConfig" class="btn btn-primary" type="button">Lưu cấu hình</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: BATCH STATION INFO & SIGNATORIES -->
+  <div id="modalBatchSettings" class="modal-backdrop hidden no-print">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3>Thông tin chung Trạm / Công trình &amp; Người ký</h3>
+        <button class="modal-close" data-close="modalBatchSettings">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Chỉnh tại đây và bấm <strong>Đồng bộ cho toàn bộ biên bản</strong> để áp dụng thống nhất cho tất cả các file Word trong lô.</p>
+
+        <h4 class="section-subtitle">1. Quy tắc đánh số biên bản &amp; Ngày tháng</h4>
+        <div class="form-grid-4">
+          <div class="field">
+            <label>STT bắt đầu (VD: 44)</label>
+            <input type="number" id="batchSttStart" value="44" min="1" />
+          </div>
+          <div class="field">
+            <label>Mã ThángNăm (MMYY)</label>
+            <input type="text" id="batchMonthYear" value="1126" placeholder="1126" />
+          </div>
+          <div class="field">
+            <label>Ngày kiểm định</label>
+            <input type="text" id="batchNgayKiemDinh" value="01/11/2026" placeholder="DD/MM/YYYY" />
+          </div>
+          <div class="field">
+            <label>Ngày phát hành BB</label>
+            <input type="text" id="batchNgayPhatHanh" value="04/11/2026" placeholder="DD/MM/YYYY" />
+          </div>
+        </div>
+
+        <h4 class="section-subtitle">2. Thông tin công trình chung</h4>
+        <div class="form-grid-2">
+          <div class="field">
+            <label>Tên công trình</label>
+            <input type="text" id="batchTenCongTrinh" />
+          </div>
+          <div class="field">
+            <label>Đơn vị yêu cầu</label>
+            <input type="text" id="batchDonViYeuCau" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Địa chỉ đầy đủ</label>
+          <input type="text" id="batchDiaChi" />
+        </div>
+        <div class="form-grid-2">
+          <div class="field">
+            <label>Lý do kiểm định / thử nghiệm</label>
+            <input type="text" id="batchLyDo" value="Sau sự cố" />
+          </div>
+          <div class="field">
+            <label>Nơi kiểm định</label>
+            <input type="text" id="batchNoiKiemDinh" value="Tại hiện trường" />
+          </div>
+        </div>
+
+        <h4 class="section-subtitle">3. Bộ 3 Người ký &amp; Chữ ký nhúng trong Word</h4>
+        <div class="form-grid-3">
+          <div class="field">
+            <label>Người thử</label>
+            <input type="text" id="batchNguoiThu" value="Nguyễn Trung Nghĩa" />
+          </div>
+          <div class="field">
+            <label>Kiểm tra</label>
+            <input type="text" id="batchKiemTra" value="Nguyễn Minh Quân" />
+          </div>
+          <div class="field">
+            <label>P. Giám đốc</label>
+            <input type="text" id="batchPhoGiamDoc" value="Nguyễn Nhật Tân" />
+          </div>
+        </div>
+
+        <div class="sig-config-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="batchIncludeSig" checked />
+            <span>Nhúng ảnh chữ ký vào cột <strong>Người thử</strong> khi xuất Word (.docx)</span>
+          </label>
+          <div class="sig-preview-box">
+            <img id="batchSigPreview" src="/static/assets/signature.png" alt="Chữ ký" />
+            <input type="file" id="batchSigFileInput" accept="image/*" hidden />
+            <button id="btnUploadCustomSig" type="button" class="btn btn-sm btn-outline">Đổi ảnh chữ ký...</button>
+            <button id="btnResetSig" type="button" class="btn btn-sm btn-outline">Mặc định</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" data-close="modalBatchSettings" type="button">Hủy</button>
+        <button id="btnApplyBatchSync" class="btn btn-primary" type="button">Đồng bộ cho toàn bộ biên bản</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast hidden no-print"></div>
+
+  <script src="/static/vision_ai.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
