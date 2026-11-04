@@ -17,7 +17,63 @@ ký số của mẫu gốc được giữ nguyên 100% — nên mở bằng Word
 
 ---
 
-## 1. Cài đặt
+## 1. Chạy nhanh nhất — bấm đúp, không gõ lệnh
+
+### Windows
+
+Bấm đúp **`Chay-Web.bat`**. Lần đầu nó tự làm hết:
+
+1. tìm Python (nếu chưa có thì mở trang tải),
+2. tạo môi trường `.venv` và cài thư viện,
+3. hỏi **API key Gemini một lần** rồi lưu vào `.env` (lần sau khỏi nhập),
+4. bật server và **tự mở trình duyệt**.
+
+Có trục trặc thì bấm đúp **`Chay-Nhanh.bat`** — nó chỉ kiểm tra môi trường rồi
+in ra đang thiếu gì, không mở server.
+
+> Nếu Windows hiện cảnh báo "Windows protected your PC": bấm **More info** →
+> **Run anyway** (file .bat chỉ là script đọc được bằng Notepad, không phải
+> file cài đặt).
+
+### macOS
+
+Bấm đúp **`Chay-Web.command`** (macOS chỉ cho bấm đúp file đuôi `.command`).
+Nếu macOS chặn: chuột phải → **Open** → **Open** một lần là xong.
+
+### Linux
+
+```bash
+./chay-web.sh
+```
+
+Ba file trên làm y hệt nhau: tự cài môi trường, hỏi key 1 lần, mở trình duyệt.
+Dùng chung một lõi là `launcher.py`:
+
+```bash
+python launcher.py                # chạy bình thường
+python launcher.py --port 8090    # đổi cổng (8000 bận thì tự nhảy cổng khác)
+python launcher.py --no-browser   # không tự mở trình duyệt
+python launcher.py --check        # chỉ kiểm tra môi trường rồi thoát
+```
+
+Khi server chạy, muốn dùng trên **điện thoại cùng wifi** thì mở
+`http://<IP-máy-tính>:8000` (server nghe trên `0.0.0.0`). Dừng bằng `Ctrl + C`.
+
+### API key Gemini — 3 cách, chọn 1
+
+| Cách | Làm gì |
+|---|---|
+| **Tự động (khuyến nghị)** | Cứ bấm `Chay-Web.bat` / `Chay-Web.command`, nó hỏi key 1 lần rồi lưu vào `.env` (quyền `600`, đã gitignore) |
+| **Biến môi trường** | `export GEMINI_API_KEY=AIza...` (Linux/macOS) hoặc `set GEMINI_API_KEY=AIza...` (Windows) |
+| **Trên giao diện** | Dán vào ô “API key Gemini” — chỉ đi theo header của request, không lưu ổ đĩa server |
+
+Lấy key miễn phí: <https://aistudio.google.com/apikey>. Không có key vẫn dùng
+được toàn bộ phần còn lại (dán JSON, sửa form, xem trước, tải Word) — chỉ là
+không nhận dạng ảnh được.
+
+Sao lưu cấu hình: copy `.env.example` thành `.env` rồi điền tay.
+
+## 2. Cài đặt thủ công (nếu không dùng file bấm đúp)
 
 ```bash
 python3 -m venv .venv
@@ -27,7 +83,7 @@ python3 -m venv .venv
 Chỉ cần `python-docx` (và `Flask` nếu dùng web UI). Không cần LibreOffice,
 không cần Microsoft Word, không cần Node.
 
-## 2. Chạy nhanh
+## 3. Chạy bằng dòng lệnh (CLI)
 
 ```bash
 # sinh 5 biên bản từ dữ liệu mẫu E-GREEN 01/11/2026
@@ -39,27 +95,7 @@ không cần Microsoft Word, không cần Node.
 # in khung JSON rỗng để điền tay
 ./.venv/bin/python -m bienban template -o data.json
 
-# chỉ sinh một vài biên bản
-./.venv/bin/python -m bienban fill data.json --forms 44,48 -o output
-
-# in đậm + in hoa phần giá trị của Tên công trình / Địa chỉ / Kết luận
-./.venv/bin/python -m bienban fill data.json --company-accent -o output
-
-# đọc JSON từ stdin
-cat data.json | ./.venv/bin/python -m bienban fill - -o output
-```
-
-Kết quả trong `output/`:
-
-```
-44_50441126BBTC.docx
-45_50451126BBTC.docx
-46_50461126BBTC.docx
-47_50471126BBTC.docx
-48_50481126BBTC.docx
-```
-
-## 3. Web UI (ảnh → AI đọc → **sửa** → xem trước → tải file)
+## 4. Web UI (ảnh → AI đọc → **sửa** → xem trước → tải file)
 
 ```bash
 # có API key Gemini trên server (khuyến nghị)
@@ -71,7 +107,7 @@ export GEMINI_API_KEY="AIza..."
 PORT=8080 ./.venv/bin/python web/app.py
 ```
 
-### 3.1. Giao diện: 3 bước, sáng, theo bộ nhận diện công ty
+### 4.1. Giao diện: 3 bước, sáng, theo bộ nhận diện công ty
 
 Thanh trên cùng mang **logo thật lấy từ file mẫu Word** (không phải ảnh chép
 tay, nên đổi logo công ty là giao diện đổi theo), màu xanh `#241a63` + đỏ
@@ -90,7 +126,7 @@ Các tiện ích khi dùng thật ngoài hiện trường:
   bằng bàn phím, đóng hộp thoại bằng `Esc`;
 * màu chữ đạt chuẩn tương phản WCAG AA trên nền sáng.
 
-### 3.2. Ba bước trên giao diện
+### 4.2. Ba bước trên giao diện
 
 **Bước 1 – Ảnh.** Kéo–thả hoặc bấm chọn ảnh chụp biên bản viết tay (JPG/PNG,
 tối đa 24 ảnh/lần). Ảnh được thu nhỏ còn cạnh dài 2000 px ngay trên server
@@ -125,7 +161,7 @@ bảng kẻ gộp ô, số liệu, chữ ký, footer) — soát xong mới tải
 > ra bằng `URL.createObjectURL`. Link GET thật thì luôn tải được. File được
 > lưu tạm 6 giờ rồi tự dọn.
 
-### 3.3. API key — không bao giờ gửi xuống trình duyệt
+### 4.3. API key — không bao giờ gửi xuống trình duyệt
 
 | Cách | Ưu điểm |
 |---|---|
@@ -142,7 +178,7 @@ Model: bấm **“↻ Lấy danh sách model”** để lấy các model đang h
 `GEMINI_MODEL` (mặc định `gemini-2.5-flash`); tên model cũ đã bị khai tử
 (`gemini-1.*`, `gemini-3.5-flash`…) được tự chuyển về mặc định.
 
-### 3.4. API (dùng từ script cũng được)
+### 4.4. API (dùng từ script cũng được)
 
 | Endpoint | Việc |
 |---|---|
@@ -166,7 +202,7 @@ curl -s -X POST http://127.0.0.1:8000/api/ai/recognize \
 ./.venv/bin/python -m bienban fill data.json -o output
 ```
 
-### 3.5. Xem trước bằng Python
+### 4.5. Xem trước bằng Python
 
 Hàm dựng bản xem trước dùng lại được ở nơi khác:
 
@@ -175,7 +211,7 @@ from bienban.preview import docx_to_html
 html = docx_to_html("output/45_50451126BBTC.docx")   # khối HTML + logo base64
 ```
 
-## 4. JSON đầu vào
+## 5. JSON đầu vào
 
 Xem `samples/e-green-01112026.json` (dữ liệu thật từ 7 ảnh biên bản viết tay +
 1 ảnh công tơ). Prompt để LLM đọc ảnh xuất ra đúng cấu trúc này nằm trong
@@ -214,7 +250,7 @@ Biên bản nào **không có khoá** thì tool bỏ qua, không sinh file rỗn
 | thiếu `ket_luan` | tự sinh câu chuẩn | `Một (01) <thiết bị> trên đạt yêu cầu đóng điện vận hành` |
 | thiếu trường phụ | `-` | giữ đúng quy ước của mẫu |
 
-## 5. Cấu hình (tuỳ chọn)
+## 6. Cấu hình (tuỳ chọn)
 
 ```bash
 ./.venv/bin/python -m bienban fill data.json -c config.json
@@ -233,7 +269,7 @@ Sao chép `config.example.json` → `config.json` rồi sửa. Các nhóm chính
 > chữ thường (đúng biên bản đã phát hành). Cần “Bold + IN HOA” thì bật
 > `--company-accent` hoặc đặt `style.header_values = "bold_upper"`.
 
-## 6. Cách hoạt động
+## 7. Cách hoạt động
 
 ```
 ảnh hiện trường
@@ -258,7 +294,7 @@ Ba điểm kỹ thuật đáng chú ý:
 3. **Bảng nhận theo “neo”.** Mỗi bảng có bộ khoá riêng + số cột tối thiểu, nên
    bảng *tỉ số biến áp* không bị nhận nhầm thành bảng *R một chiều*.
 
-## 7. Mẫu 44 (.doc cũ)
+## 8. Mẫu 44 (.doc cũ)
 
 `44 BB MBA 1P 50KVA.doc` là Word 97. Để điền form đồng nhất, mẫu 44 đã được
 dựng lại thành `templates/44 BB MBA 1P.docx` bằng `tools/build_template_44.py`:
@@ -271,24 +307,29 @@ rồi chép nguyên nội dung bản .doc (đúng thứ tự mục I → V, đú
 
 Bản .doc gốc được giữ tại `legacy/44 BB MBA 1P 50KVA.doc` để đối chiếu.
 
-## 8. Kiểm thử
+## 9. Kiểm thử
 
 ```bash
-./.venv/bin/python -m pytest -q      # 79 test
+./.venv/bin/python -m pytest -q      # 91 test
 ```
+
+Không cần cài gì thêm — test Gemini dùng stub, test launcher tự bật server ở
+cổng ngẫu nhiên rồi tắt.
 
 Bao gồm: chuẩn hoá ngày/số, nhận dạng nhãn, nội dung từng biên bản 44–48,
 giữ header/footer + ảnh logo, chế độ in đậm/in hoa, validate dữ liệu, dựng bản
 xem trước HTML (logo, gộp ô, số liệu), API web (render / download / preview),
 **nhận dạng ảnh Gemini** (prompt, gọi API, parse JSON, chuẩn hoá dữ liệu AI trả
 về, endpoint `/api/ai/*`), **bảng nhiều dòng** (`rows[]` → Word: thêm/bớt dòng
-cho 45/46/47/48) và **giao diện** (logo lấy từ mẫu Word, CSS thương hiệu, mọi ô
-của 5 mẫu đều sửa được, chữ lớn, in ấn).
+cho 45/46/47/48), **giao diện** (logo lấy từ mẫu Word, CSS thương hiệu, mọi ô
+của 5 mẫu đều sửa được, chữ lớn, in ấn) và **bộ khởi động** (`launcher.py`,
+`.bat`/`.command`/`.sh`: tự cài môi trường, hỏi key 1 lần, tự mở trình duyệt,
+tự nhảy cổng khi bận).
 
 Kiểm thử Gemini **không** gọi mạng thật: `vision._request` được thay bằng hàm
 giả lập, nên chạy offline vẫn đủ và không tốn quota.
 
-## 9. Cấu trúc thư mục
+## 10. Cấu trúc thư mục
 
 ```
 bienban/            # thư viện chính
@@ -314,7 +355,7 @@ tests/              # pytest
 output/             # file .docx sinh ra (đã .gitignore)
 ```
 
-## 10. Mở rộng
+## 11. Mở rộng
 
 * **Thêm mẫu mới**: thêm file vào `templates/`, khai báo `TEMPLATES`, `TITLES`,
   `DATA_KEYS`, `LABELS` trong `bienban/spec.py` (và `TABLE_PROBES` nếu có bảng).

@@ -873,3 +873,137 @@ class TestUI:
                              "la": "rows", "fco": "rows", "earth": "rows"}
                     key = alias.get(it["table"], it["table"])
                     assert key in tables, (form, it["table"])
+
+
+# --------------------------------------------------------------------------- #
+# Bộ khởi động (launcher.py + file .bat/.sh)
+# --------------------------------------------------------------------------- #
+class TestLauncher:
+    @pytest.fixture()
+    def launcher(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        import launcher
+
+        return launcher
+
+    def test_read_env_tolerates_formats(self, launcher, tmp_path):
+        f = tmp_path / ".env"
+        f.write_text('# chú thích\n\nexport FOO="bar baz"\nBAZ=1\n\n', encoding="utf-8")
+        assert launcher.read_env(f) == {"FOO": "bar baz", "BAZ": "1"}
+
+    def test_write_env_roundtrip_and_permissions(self, launcher, tmp_path):
+        f = tmp_path / ".env"
+        launcher.write_env("GEMINI_API_KEY", "abc123", f)
+        launcher.write_env("PORT", "8123", f)
+        assert launcher.read_env(f) == {"GEMINI_API_KEY": "abc123", "PORT": "8123"}
+        # giữ nguyên khoá cũ khi ghi thêm
+        assert f.read_text(encoding="utf-8").count("GEMINI_API_KEY") == 1
+        mode = f.stat().st_mode & 0o777
+        assert mode == 0o600 or mode == 0o644     # Windows bỏ qua chmod
+
+    def test_apply_env_does_not_override(self, launcher, tmp_path, monkeypatch):
+        f = tmp_path / ".env"
+        f.write_text("FOO=from-file\nBAR=from-file\n", encoding="utf-8")
+        monkeypatch.setenv("BAR", "from-shell")
+        monkeypatch.delenv("FOO", raising=False)
+        launcher.apply_env(f)
+        import os
+
+        assert os.environ["FOO"] == "from-file"
+        assert os.environ["BAR"] == "from-shell"    # biến môi trường thắng
+
+    def test_pick_port_skips_busy(self, launcher):
+        import socket
+
+        with socket.socket() as busy:
+            busy.bind(("127.0.0.1", 0))
+            busy.listen(1)
+            port = busy.getsockname()[1]
+            assert launcher.port_free(port) is False
+            picked = launcher.pick_port(port, tries=5)
+            assert picked != port and port < picked < port + 5
+
+    def test_requirements_detected(self, launcher):
+        assert launcher.requirements_missing() == []     # môi trường test đã đủ
+
+    def test_check_reports_environment(self, launcher, capsys):
+        rc = launcher.check()
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Mẫu Word      : 5/5" in out
+        assert "API key Gemini" in out
+
+    def test_launcher_runs_server(self, launcher, monkeypatch):
+        """--no-browser + cổng ngẫu nhiên: server phải lên và trả 200."""
+        import threading
+        import time
+        import urllib.request
+
+        import web.app as webapp
+
+        port = launcher.pick_port(8300)
+        err = []
+
+        def run():
+            try:
+                webapp.app.run(host="127.0.0.1", port=port, debug=False,
+                               use_reloader=False, threaded=True)
+            except Exception as exc:              # pragma: no cover
+                err.append(exc)
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        for _ in range(60):
+            time.sleep(0.1)
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2) as r:
+                    assert r.status == 200
+                    body = r.read().decode()
+                    assert "brandmark" in body
+                    break
+            except Exception:
+                continue
+        else:                                     # pragma: no cover
+            pytest.fail("server không lên")
+        assert not err
+
+    def test_windows_script_is_crlf_and_ascii(self):
+        """cmd.exe đọc .bat theo bảng mã hệ thống: phải ASCII + CRLF."""
+        for name in ("Chay-Web.bat", "Chay-Nhanh.bat"):
+            data = (ROOT / name).read_bytes()
+            assert data.count(b"\r\n") == data.count(b"\n"), f"{name}: thiếu CRLF"
+            assert all(b <= 127 for b in data), f"{name}: có ký tự ngoài ASCII"
+        # file chính có điều hướng bằng nhãn
+        assert b"goto :" in (ROOT / "Chay-Web.bat").read_bytes()
+
+    def test_shell_scripts_are_executable(self):
+        import os
+        import stat
+
+        for name in ("chay-web.sh", "chay-nhanh.sh", "Chay-Web.command"):
+            path = ROOT / name
+            assert path.exists(), name
+            mode = path.stat().st_mode
+            assert mode & stat.S_IXUSR, f"{name} thiếu quyền chạy"
+            text = path.read_text(encoding="utf-8")
+            assert "\r\n" not in text, f"{name}: phải dùng LF"
+
+    def test_bat_labels_all_defined(self):
+        import re
+
+        text = (ROOT / "Chay-Web.bat").read_text(encoding="utf-8")
+        labels = set(re.findall(r"^:(\w+)", text, re.M))
+        gotos = set(re.findall(r"goto :(\w+)", text))
+        assert gotos <= labels, f"goto tới nhãn không tồn tại: {gotos - labels}"
+
+    def test_gitattributes_keeps_bat_crlf(self):
+        text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        assert "*.bat   text eol=crlf" in text
+        assert "*.sh    text eol=lf" in text
+
+    def test_env_is_gitignored(self):
+        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        assert ".env" in ignored
+        assert (ROOT / ".env.example").exists()

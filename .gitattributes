@@ -1,0 +1,4 @@
+# Windows cần CRLF cho file .bat (thiếu là lỗi "goto :label not found" khó hiểu)
+*.bat   text eol=crlf
+# Script shell phải là LF, nếu không sẽ lỗi "bad interpreter"
+*.sh    text eol=lf
