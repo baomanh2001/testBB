@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 from bienban import vision                               # noqa: E402
 from bienban.fill import load_config, render_all          # noqa: E402
 from bienban.preview import PAGE_CSS, docx_to_html        # noqa: E402
+from bienban import checks  # noqa: E402
 from bienban.schema import web_schema                     # noqa: E402
 from bienban.spec import DATA_KEYS, TEMPLATES, TITLES     # noqa: E402
 from bienban.validate import validate                     # noqa: E402
@@ -167,6 +168,66 @@ def api_ai_models():
                     "default": vision.DEFAULT_MODEL, "selected": vision.DEFAULT_MODEL})
 
 
+# Ảnh của lần nhận dạng gần nhất, giữ trong RAM (không ghi ra đĩa) để bước
+# "soát lại bằng AI" dùng lại chính các ảnh đó mà không phải upload lại.
+_LAST_IMAGES: dict = {"blobs": [], "sizes": []}
+_MAX_CACHE_BYTES = 24 * 1024 * 1024          # 24 MB
+_MAX_CACHE_IMAGES = 8
+
+
+def _remember_images(blobs: list[bytes]) -> None:
+    keep, total = [], 0
+    for b in blobs[:_MAX_CACHE_IMAGES]:
+        if total + len(b) > _MAX_CACHE_BYTES:
+            break
+        keep.append(b)
+        total += len(b)
+    _LAST_IMAGES["blobs"] = keep
+    _LAST_IMAGES["sizes"] = [len(b) for b in keep]
+
+
+def _last_blobs() -> list[bytes]:
+    return list(_LAST_IMAGES.get("blobs") or [])
+
+
+@app.post("/api/check")
+def api_check():
+    """Soát số liệu sau khi AI đọc ảnh — trả về "log nhỏ" cảnh báo.
+
+    Mặc định chỉ chạy lớp quy tắc (không gọi mạng, tức thì). Thêm ``ai=1`` để
+    hỏi lại model với chính các ảnh vừa dùng (tuỳ chọn, chậm hơn 10–30 giây).
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "JSON không hợp lệ"}), 400
+
+    warnings_ = checks.check_rules(data)
+    out = [w.as_dict() for w in warnings_]
+    ai_error = None
+    if request.args.get("ai") in ("1", "true", "yes"):
+        try:
+            blobs = _last_blobs()
+            if blobs:
+                forms = [f for f in (request.args.get("forms") or "").split(",")
+                         if f in TEMPLATES] or None
+                ai_warn = checks.check_with_ai(
+                    data, blobs[:8], key=_gemini_key(),
+                    model=request.args.get("model") or None, forms=forms)
+                out += [w.as_dict() for w in ai_warn]
+        except vision.GeminiError as exc:
+            ai_error = str(exc)
+        except Exception as exc:                              # pragma: no cover
+            app.logger.exception("ai check failed")
+            ai_error = f"Lỗi khi soát bằng AI: {exc}"
+    return jsonify({
+        "ok": True,
+        "checks": out,
+        "ai_error": ai_error,
+        "counts": {"rule": sum(1 for c in out if c["source"] == "rule"),
+                   "ai": sum(1 for c in out if c["source"] == "ai")},
+    })
+
+
 @app.post("/api/ai/recognize")
 def api_ai_recognize():
     """Nhận ảnh biên bản → JSON đã chuẩn hoá theo đúng cấu trúc của tool."""
@@ -179,6 +240,7 @@ def api_ai_recognize():
     blobs = [f.read() for f in uploads]
     if any(not b for b in blobs):
         return jsonify({"ok": False, "error": "Có ảnh rỗng hoặc đọc lỗi"}), 400
+    _remember_images(blobs)      # để bước soát AI dùng lại, không cần upload lại
 
     forms = [f for f in (request.form.get("forms") or "").split(",") if f]
     forms = [f for f in forms if f in TEMPLATES] or None
@@ -211,6 +273,8 @@ def api_ai_recognize():
         "sources": data.get("_ai", {}).get("sources", {}),
         "blocks": [k for k in DATA_KEYS.values() if k in data],
         "problems": _problems_json(problems),
+        # cảnh báo quy tắc ngay sau khi đọc ảnh (lớp AI là tuỳ chọn, gọi /api/check?ai=1)
+        "checks": [w.as_dict() for w in checks.check_rules(data)],
     })
 
 

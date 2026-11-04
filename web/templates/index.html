@@ -125,9 +125,18 @@
         <div class="sticky" id="sticky" style="display:none">
           <button class="primary" id="btnRender">Xem trước &amp; sinh biên bản</button>
           <button id="btnValidate">Kiểm tra dữ liệu</button>
+          <span class="undo-group">
+            <button class="icon-btn" id="btnUndo" disabled aria-label="Hoàn tác"
+                    title="Hoàn tác (Ctrl+Z)">↶</button>
+            <button class="icon-btn" id="btnRedo" disabled aria-label="Làm lại"
+                    title="Làm lại (Ctrl+Shift+Z)">↷</button>
+          </span>
+          <span class="draft" id="draftState" aria-live="polite"></span>
           <span class="info" id="formInfo"></span>
         </div>
+        <div id="draftBanner" class="draft-banner" hidden></div>
         <div id="status"></div>
+        <div id="checks" class="checks-panel" hidden></div>
         <div id="editor"></div>
       </div>
     </section>
@@ -227,6 +236,8 @@ function setPath(obj, path, value){
   }
   cur[path[path.length-1]] = value;
   syncJson(); markDirty();
+  touch("field:" + path.join("|"));      // 1 bước lịch sử cho mỗi cụm gõ
+  queueDraft();
 }
 function rowsOf(block, table){
   if(!block) return [];
@@ -240,11 +251,179 @@ function setRows(block, table, rows){
   if(table.sync_so_luong && block[table.sync_so_luong] !== undefined)
     block[table.sync_so_luong] = String(rows.length).padStart(2,"0");
   syncJson(); markDirty();
+  touch("rows:" + table.key);           // thêm/xoá dòng = 1 bước hoàn tác
+  queueDraft();
 }
 function ensureBlock(form){
   const k = dataKey(form);
   if(typeof DATA[k] !== "object" || DATA[k] === null) DATA[k] = {};
   return DATA[k];
+}
+
+/* ---------------- ô chọn có “✎ Khác…” ---------------- */
+function writePath(rawPath, value){
+  if(rawPath[0] === "__block") setPath(ensureBlock(rawPath[1]), rawPath.slice(2), value);
+  else setPath(DATA, rawPath, value);
+}
+function readPath(rawPath){
+  if(rawPath[0] === "__block") return getPath(ensureBlock(rawPath[1]) || {}, rawPath.slice(2));
+  return getPath(DATA, rawPath);
+}
+/* Một <select>: chọn trong danh sách, hoặc “✎ Khác…” để tự gõ (giá trị vẫn lưu). */
+function bindSelect(sel){
+  const other = sel.parentElement.querySelector(`[data-other-of="${sel.id}"]`) ||
+                document.getElementById(sel.id + "_other");
+  const rawPath = sel.dataset.row !== undefined ? null : sel.dataset.path.split("|");
+  const commit = val => {
+    if(rawPath) writePath(rawPath, val);
+    else {
+      const table = currentTable(sel);
+      const block = ensureBlock(ACTIVE);
+      const rows = rowsOf(block, table);
+      const i = Number(sel.dataset.row);
+      if(rows[i]){ rows[i][sel.dataset.k] = val; syncJson(); markDirty(); }
+      touch("row:" + i + ":" + sel.dataset.k); queueDraft();
+    }
+  };
+  const setOtherVisible = on => {
+    if(!other) return;
+    other.hidden = !on;
+    if(on){ other.focus(); other.select && other.select(); }
+  };
+  const selectedIsOther = () => isOther(sel.selectedOptions && sel.selectedOptions[0]);
+  sel.addEventListener("change", () => {
+    if(selectedIsOther()){ setOtherVisible(true); return; }
+    setOtherVisible(false);
+    if(other) other.value = "";
+    commit(sel.value);
+  });
+  if(other && selectedIsOther()) other.hidden = false;
+  if(other){
+    const onType = () => {
+      commit(other.value);
+      if(!other.value.trim()){                    // xoá hết -> quay về "— chọn —"
+        const back = [...sel.options].find(o => o.value === "");
+        if(back) sel.value = "";
+      }
+    };
+    other.addEventListener("input", onType);
+    other.addEventListener("change", onType);
+  }
+  return sel;
+}
+/* ---------------- Toast ---------------- */
+let TOAST_T = null;
+function toast(msg, kind){
+  const box = $("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + (kind || "");
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 250); }, 2600);
+}
+
+/* ---------------- Lịch sử hoàn tác ---------------- */
+const HIST = {stack: [], index: -1, label: "", lastKey: "", lastAt: 0};
+const UNDO_MAX = 80;               // 80 bước là đủ cho một buổi nhập liệu
+function snapshot(){
+  try{ return JSON.stringify(DATA); }catch(e){ return "{}"; }
+}
+function resetHistory(){
+  HIST.stack = [snapshot()];
+  HIST.index = 0;
+  HIST.lastKey = ""; HIST.lastAt = 0;
+  updateUndoButtons();
+}
+/* Gộp các lần gõ liên tiếp vào 1 bước (350 ms) để Ctrl+Z không lùi từng ký tự. */
+/* Gọi NGAY SAU khi sửa dữ liệu: chốt trạng thái mới thành một mốc.
+   Cụm gõ liên tiếp (cùng ô, < 350 ms) gộp làm một bước: mốc cuối được cập nhật
+   thay vì thêm bước mới, nên Ctrl+Z chỉ lùi đúng một lần cho cả cụm. */
+function touch(key){
+  if(!HIST.stack.length){ resetHistory(); return; }
+  const now = Date.now();
+  const coalesce = key && key === HIST.lastKey && (now - HIST.lastAt) < 350;
+  HIST.lastKey = key || "";
+  HIST.lastAt = now;
+  const snap = snapshot();
+  if(coalesce){
+    HIST.stack[HIST.index] = snap;     // cùng một cụm gõ: cập nhật mốc hiện tại
+    updateUndoButtons();
+    return;
+  }
+  if(snap === HIST.stack[HIST.index]) return;
+  HIST.stack = HIST.stack.slice(0, HIST.index + 1);
+  HIST.stack.push(snap);
+  if(HIST.stack.length > UNDO_MAX) HIST.stack.shift();
+  HIST.index = HIST.stack.length - 1;
+  updateUndoButtons();
+}
+/* Giữ tên cũ cho nơi khác gọi (không còn việc gì sau khi đổi). */
+function commitHistory(){ updateUndoButtons(); }
+function canUndo(){ return HIST.index > 0; }
+function canRedo(){ return HIST.index < HIST.stack.length - 1; }
+function updateUndoButtons(){
+  const u = $("btnUndo"), r = $("btnRedo");
+  if(!u || !r) return;
+  const back = HIST.index;
+  const fwd = Math.max(0, HIST.stack.length - 1 - HIST.index);
+  u.disabled = !canUndo();
+  r.disabled = !canRedo();
+  u.title = "Hoàn tác (Ctrl+Z)" + (back ? ` — lùi được ${back} bước` : " — không còn gì");
+  r.title = "Làm lại (Ctrl+Shift+Z)" + (fwd ? ` — tiến được ${fwd} bước` : " — không còn gì");
+}
+function restore(i){
+  if(i < 0 || i >= HIST.stack.length) return;
+  HIST.index = i;
+  try{ DATA = JSON.parse(HIST.stack[i]); }catch(e){ return; }
+  if(!ACTIVE || !SCHEMA.forms[ACTIVE]) ACTIVE = FORM_KEYS[0];
+  renderTabs(); renderEditor(); syncJson(); markDirty();
+  updateUndoButtons(); saveDraft();
+}
+function undo(){ if(!canUndo()) return; restore(HIST.index - 1); toast("Đã hoàn tác"); }
+function redo(){ if(!canRedo()) return; restore(HIST.index + 1); toast("Đã làm lại"); }
+
+/* ---------------- Nháp tự lưu ---------------- */
+const DRAFT_KEY = "bienban.draft";
+let DRAFT_T = null;
+function saveDraft(){
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({at: Date.now(), data: DATA, active: ACTIVE}));
+    const el = $("draftState");
+    if(el) el.textContent = "nháp: đã lưu " + new Date().toLocaleTimeString("vi-VN");
+  }catch(e){ /* hết dung lượng: bỏ qua, không làm hỏng việc nhập liệu */ }
+}
+function queueDraft(){
+  clearTimeout(DRAFT_T);
+  DRAFT_T = setTimeout(saveDraft, 600);
+}
+function readDraft(){
+  try{
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function clearDraft(){
+  try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+  const el = $("draftState"); if(el) el.textContent = "";
+}
+/* Hỏi khôi phục khi mở lại trang (chỉ khi có nháp và có dữ liệu thật). */
+function offerDraftRestore(){
+  const d = readDraft();
+  const box = $("draftBanner");
+  if(!d || !d.data || !Object.keys(d.data).length || !box) return;
+  const n = FORM_KEYS.filter(f => d.data["bien_ban_" + DATA_KEY[f]]).length;
+  const when = new Date(d.at).toLocaleString("vi-VN");
+  box.hidden = false;
+  box.innerHTML = `<b>Có bản nháp lưu lúc ${esc(when)}</b> (${n} biên bản). Khôi phục lại?` +
+    `<span class="acts"><button class="primary small" id="btnRestoreDraft">Khôi phục</button>` +
+    `<button class="small" id="btnDiscardDraft">Bắt đầu mới</button></span>`;
+  $("btnRestoreDraft").onclick = async () => {
+    box.hidden = true;
+    await loadData(d.data);
+    if(d.active && SCHEMA.forms[d.active]){ ACTIVE = d.active; renderTabs(); renderEditor(); }
+    resetHistory(); toast("Đã khôi phục bản nháp");
+  };
+  $("btnDiscardDraft").onclick = () => { box.hidden = true; clearDraft(); toast("Đã bỏ bản nháp"); };
 }
 
 /* ---------------- stepper ---------------- */
@@ -304,8 +483,11 @@ function updateFormInfo(){
 }
 
 /* ---------------- form ---------------- */
+const OTHER_LABEL = "✎ Khác…";       // mục cuối của mọi dropdown
+const isOther = opt => !!(opt && opt.dataset && opt.dataset.other);
 function fieldHtml(f, path, value, wide){
-  const id = "f_" + path.join("_");
+  // id gọn: bỏ tiền tố nội bộ "__block|<mẫu>" -> "f_45_loai"
+  const id = "f_" + path.filter(p => p !== "__block").join("_");
   const hint = f.hint ? `<div class="hint">${esc(f.hint)}</div>` : "";
   const unit = f.unit ? ` <span class="opt">(${esc(f.unit)})</span>` : "";
   const label = `<label class="lbl" for="${id}">${esc(f.label)}${unit}</label>`;
@@ -313,11 +495,15 @@ function fieldHtml(f, path, value, wide){
   if(f.type === "select"){
     const val = value == null ? "" : String(value);
     const opts = (f.options || []).slice();
-    if(val && !opts.includes(val)) opts.unshift(val);
-    inp = `<select id="${id}" data-path="${esc(path.join("|"))}">
+    const known = !val || opts.includes(val);   // giá trị lạ -> chọn “✎ Khác…”
+    inp = `<select id="${id}" data-path="${esc(path.join("|"))}" data-select="1">
              <option value="">— chọn —</option>
              ${opts.map(o => `<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}
-           </select>`;
+             <option value="${OTHER_LABEL}" data-other="1" ${known?"":"selected"}>${OTHER_LABEL}</option>
+           </select>` +
+          `<input type="text" class="other" id="${id}_other" data-other-of="${id}"
+                  value="${known?"":esc(val)}" placeholder="Nhập giá trị khác…"
+                  aria-label="${esc(f.label)} – giá trị khác" ${known?"hidden":""} />`;
   } else if(f.type === "textarea"){
     inp = `<textarea id="${id}" rows="2" data-path="${esc(path.join("|"))}">${esc(value)}</textarea>`;
   } else if(f.type === "series"){
@@ -335,6 +521,40 @@ function fieldHtml(f, path, value, wide){
             ${f.type==="code"?'inputmode="numeric"':''} />`;
   }
   return `<div class="${wide?"wide":""}">${label}${inp}${hint}</div>`;
+}
+
+/* Dòng trống ở MỌI cột (sẽ bị bỏ khi in). */
+const BLANKS = ["", "-", "–", "—"];
+function isBlankCell(v){ return v == null || BLANKS.includes(String(v).trim()); }
+function blankRowStats(block, table){
+  const rows = rowsOf(block, table);
+  const cols = (table.columns || []).map(c => c.key);
+  return rows.filter(r => !cols.some(c => !isBlankCell(r[c]))).length;
+}
+/* Dọn trước khi gửi server: bỏ dòng trống, đánh lại STT, giảm số lượng. */
+function pruneBlankRows(data){
+  const out = JSON.parse(JSON.stringify(data || {}));
+  const removed = [];
+  Object.keys(SCHEMA.forms).forEach(form => {
+    const k = dataKey(form);
+    if(!out[k]) return;
+    for(const g of SCHEMA.forms[form].groups){
+      const t = g.table; if(!t || t.kind === "fixed") continue;
+      const raw = out[k][t.key];
+      const arr = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.rows) ? raw.rows : null);
+      if(!arr || !arr.length) continue;
+      const cols = (t.columns || []).map(c => c.key);
+      const keep = arr.filter(r => r && cols.some(c => !isBlankCell(r[c])));
+      keep.forEach((r, i) => { if(t.stt) r.stt = String(i+1); });
+      const gone = arr.length - keep.length;
+      if(!gone) continue;
+      if(Array.isArray(raw)) out[k][t.key] = keep; else raw.rows = keep;
+      if(t.sync_so_luong && out[k][t.sync_so_luong] !== undefined && keep.length)
+        out[k][t.sync_so_luong] = String(keep.length).padStart(2, "0");
+      removed.push({form, title: g.title, gone, left: keep.length});
+    }
+  });
+  return {data: out, removed};
 }
 
 function tableHtml(table, block){
@@ -358,10 +578,15 @@ function tableHtml(table, block){
           const val = row[c.key] ?? "";
           if(c.type === "select"){
             const opts = (c.options || []).slice();
-            if(val && !opts.includes(val)) opts.unshift(val);
-            return `<td><select data-row="${i}" data-k="${esc(c.key)}" aria-label="${esc(c.label)} dòng ${i+1}">
+            const known = !val || opts.includes(val);
+            const sid = `r_${table.key}_${i}_${c.key}`;
+            return `<td class="selcell"><select id="${sid}" data-row="${i}" data-k="${esc(c.key)}"
+                        data-select="1" aria-label="${esc(c.label)} dòng ${i+1}">
               <option value=""></option>${opts.map(o=>`<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}
-            </select></td>`;
+              <option value="${OTHER_LABEL}" data-other="1" ${known?"":"selected"}>${OTHER_LABEL}</option>
+            </select><input type="text" class="other" data-other-of="${sid}"
+                 value="${known?"":esc(val)}" placeholder="Khác…" ${known?"hidden":""}
+                 aria-label="${esc(c.label)} dòng ${i+1} – giá trị khác" /></td>`;
           }
           return `<td><input type="text" data-row="${i}" data-k="${esc(c.key)}"
                    value="${esc(val)}" aria-label="${esc(c.label)} dòng ${i+1}" /></td>`;
@@ -374,8 +599,13 @@ function tableHtml(table, block){
         Chưa có dòng nào — bấm “+ Thêm dòng”.</td></tr>`;
     }
   }
+  const blanks = block && table.addable ? blankRowStats(block, table) : 0;
+  const badge = table.addable
+    ? `<span class="badge">${rows.length} dòng</span>` +
+      (blanks ? `<span class="badge warn" title="Dòng trống hoàn toàn sẽ bị bỏ khi in">${blanks} dòng trống</span>` : "")
+    : "";
   return `<div class="group">
-      <h3>${esc(table.title || "")}${table.addable?`<span class="badge">${rows.length} dòng</span>`:""}</h3>
+      <h3>${esc(table.title || "")}${badge}</h3>
       <div class="gbody">
         <div class="tblwrap"><table class="tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
         ${table.addable?`<div class="btnrow"><button class="small" data-addrow="1">+ Thêm dòng</button></div>`:""}
@@ -390,13 +620,7 @@ function renderEditor(){
   updateFormInfo();
 
   let html = "";
-  const common = SCHEMA.common;
-  html += `<div class="group">
-      <h3>${esc(common.title)}</h3>
-      <div class="gbody"><div class="flds">` +
-    common.fields.map(f => fieldHtml(f, f.path, getPath(DATA, f.path), f.type === "text")).join("") +
-    `</div></div></div>`;
-
+  // Thứ tự khối + thứ tự ô do schema.py quyết định (có test đối chiếu file Word)
   SCHEMA.forms[form].groups.forEach(g => {
     if(g.table){
       html += tableHtml(Object.assign({}, g.table, {title: g.title}), DATA[dataKey(form)]);
@@ -404,9 +628,11 @@ function renderEditor(){
     }
     html += `<div class="group"><h3>${esc(g.title)}</h3><div class="gbody"><div class="flds">` +
       g.fields.map(f => {
-        const p = f.path || f.key.split(".");
-        return fieldHtml(f, ["__block", form].concat(p), getPath(DATA[dataKey(form)] || {}, p),
-                         f.type === "textarea");
+        const raw = f.path || f.key.split(".");
+        // "__block|<mẫu>|..." -> ô riêng nằm trong DATA["bien_ban_45_mccb"]
+        if(raw[0] === "__block") return fieldHtml(f, raw, getPath(DATA[dataKey(form)] || {}, raw.slice(2)),
+                                                 f.type === "textarea");
+        return fieldHtml(f, raw, getPath(DATA, raw), f.type === "textarea");
       }).join("") + `</div></div></div>`;
   });
   $("editor").innerHTML = html;
@@ -417,6 +643,7 @@ function bindEditor(){
   const ed = $("editor");
   // ô đơn
   ed.querySelectorAll("[data-path]").forEach(inp => {
+    if(inp.dataset.select){ bindSelect(inp); return; }
     const handler = () => {
       const path = inp.dataset.path.split("|");
       let value = inp.value;
@@ -432,11 +659,13 @@ function bindEditor(){
   });
   // dòng bảng
   ed.querySelectorAll("[data-row]").forEach(inp => {
+    if(inp.dataset.select){ bindSelect(inp); return; }
     const handler = () => {
       const table = currentTable(inp);
       const rows = rowsOf(ensureBlock(ACTIVE), table);
       const i = Number(inp.dataset.row);
       if(rows[i]){ rows[i][inp.dataset.k] = inp.value; syncJson(); markDirty(); }
+      touch("row:" + inp.dataset.row + ":" + inp.dataset.k); queueDraft();
     };
     inp.addEventListener("input", handler);
     inp.addEventListener("change", handler);
@@ -469,10 +698,6 @@ function bindEditor(){
       const table = currentTable(b);
       const block = ensureBlock(ACTIVE);
       const rows = rowsOf(block, table).slice();
-      if(rows.length <= 1){
-        setAiStatus("Cần giữ lại ít nhất 1 dòng kết quả.", "warn");
-        return;
-      }
       rows.splice(Number(b.dataset.delrow), 1);
       rows.forEach((r, i) => { if(table.stt) r.stt = String(i + 1); });
       setRows(block, table, rows);
@@ -513,6 +738,8 @@ async function loadData(data){
   const present = FORM_KEYS.filter(formHasData);
   ACTIVE = present[0] || ACTIVE || FORM_KEYS[0];
   renderTabs(); renderEditor(); syncJson();
+  resetHistory();        // nạp dữ liệu mới = mốc đầu của lịch sử
+  queueDraft();
   return DATA;
 }
 function markDirty(){
@@ -647,6 +874,8 @@ $("btnRecognize").onclick = async () => {
     }
     IMAGES.forEach(im => im.status = "đã đọc"); renderThumbs();
     await loadData(d.data);
+    // log nhỏ: cảnh báo quy tắc do server trả kèm kết quả nhận dạng
+    renderChecks(d.checks || [], "");
     const blocks = (d.blocks || []).map(b => b.replace("bien_ban_", ""));
     let html = `Đã đọc <b>${blocks.length} biên bản</b>: ${blocks.join(", ")}. ` +
                `Soát lại từng ô bên phải rồi bấm <b>Xem trước &amp; sinh biên bản</b>.`;
@@ -661,6 +890,100 @@ $("btnRecognize").onclick = async () => {
     btn.disabled = false; btn.innerHTML = "✨ Nhận dạng ảnh → điền form";
   }
 };
+
+/* ---------------- Soát số liệu (log nhỏ cảnh báo) ---------------- */
+function checksHtml(list, extra){
+  if(!list.length && !extra) return "";
+  const items = list.map((c, i) => `
+    <div class="check-item ${c.level === "info" ? "info" : "warn"}" data-ci="${i}" role="button" tabindex="0"
+         title="Bấm để tới đúng ô cần xem">
+      <span class="ic">${c.level === "info" ? "i" : "!"}</span>
+      <span class="msg">${esc(c.message)}</span>
+      <span class="from">${c.source === "ai" ? "AI soát" : "quy tắc"}${c.form ? " · mẫu " + esc(c.form) : ""}</span>
+    </div>`).join("");
+  return `<div class="head"><b>Soát số liệu</b>
+      <span class="cnt">${list.length} cảnh báo</span>
+      <button class="small" id="btnAiCheck">Soát lại bằng AI</button>
+      <button class="small ghost" id="btnCloseChecks" aria-label="Đóng">✕</button></div>
+    ${extra ? `<div class="aierr">${esc(extra)}</div>` : ""}
+    <div class="list">${items || `<div class="ok">Không phát hiện điểm bất thường.</div>`}</div>`;
+}
+function renderChecks(list, extra){
+  const box = $("checks");
+  if(!box) return;
+  if(!list || !list.length && !extra){ box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  box.innerHTML = checksHtml(list, extra);
+  box.dataset.json = JSON.stringify(list);
+  box.querySelectorAll(".check-item").forEach(el => {
+    const go = () => jumpToField(JSON.parse(box.dataset.json)[Number(el.dataset.ci)]);
+    el.onclick = go;
+    el.onkeydown = e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); go(); } };
+  });
+  $("btnCloseChecks").onclick = () => { box.hidden = true; };
+  $("btnAiCheck").onclick = runAiCheck;
+}
+/* Nhảy tới ô đầu tiên khớp cảnh báo và tô sáng ô đó. */
+function jumpToField(chk){
+  if(!chk) return;
+  if(chk.form && SCHEMA.forms[chk.form] && ACTIVE !== chk.form){ ACTIVE = chk.form; renderTabs(); renderEditor(); }
+  const keys = [];
+  if(chk.field) keys.push(chk.field);
+  (chk.where || "").split(/[.[\]]+/).filter(Boolean).forEach(k => keys.push(k));
+  let hit = null;
+  for(const k of keys){
+    if(!k || /^\d+$/.test(k)) continue;
+    hit = [...document.querySelectorAll("#editor [data-path], #editor [data-k], #editor [data-fix]")]
+      .find(el => (el.dataset.path || "").includes(k) || el.dataset.k === k || el.dataset.fix === k);
+    if(hit) break;
+  }
+  if(!hit){ toast("Không tìm thấy ô tương ứng", "warn"); return; }
+  hit.scrollIntoView({block: "center", behavior: "smooth"});
+  hit.classList.add("flash");
+  setTimeout(() => hit.classList.remove("flash"), 1600);
+  if(hit.focus) hit.focus({preventScroll: true});
+}
+let CHECK_SEQ = 0;
+async function runChecks(ai){
+  const seq = ++CHECK_SEQ;
+  const box = $("checks");
+  if(box){ box.hidden = false; box.innerHTML = `<div class="head"><b>Soát số liệu</b>
+      <span class="cnt"><span class="spin"></span> đang soát…</span></div>`; }
+  try{
+    const r = await fetch("/api/check" + (ai ? "?ai=1" : ""),
+      {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(DATA)});
+    const res = await r.json();
+    if(seq !== CHECK_SEQ) return;
+    renderChecks(res.checks || [], res.ai_error || "");
+  }catch(e){
+    if(seq !== CHECK_SEQ) return;
+    renderChecks([], "Không gọi được máy chủ: " + e.message);
+  }
+}
+function runAiCheck(){
+  const box = $("checks");
+  if(box) box.dataset.json = "[]";
+  toast("Đang nhờ AI soát lại ảnh…", "info");
+  runChecks(true);
+}
+
+/* ---------------- nút hoàn tác / làm lại ---------------- */
+$("btnUndo").onclick = undo;
+$("btnRedo").onclick = redo;
+
+/* ---------------- phím tắt ---------------- */
+document.addEventListener("keydown", e => {
+  const mod = e.ctrlKey || e.metaKey;
+  if(!mod) return;
+  const k = (e.key || "").toLowerCase();
+  if(k === "z" && !e.shiftKey){ e.preventDefault(); undo(); }
+  else if((k === "z" && e.shiftKey) || k === "y"){ e.preventDefault(); redo(); }
+  else if(k === "s"){
+    e.preventDefault();
+    saveDraft();
+    toast("Đã lưu nháp trên máy này");
+  }
+});
 
 /* ---------------- kiểm tra / sinh ---------------- */
 $("btnValidate").onclick = async () => {
@@ -680,6 +1003,13 @@ $("btnRender").onclick = async () => {
   const btn = $("btnRender");
   btn.disabled = true;
   try{
+    // quy ước dòng trống: dòng trống hoàn toàn không được gửi đi in
+    const pruned = pruneBlankRows(DATA);
+    let note = "";
+    if(pruned.removed.length){
+      DATA = pruned.data; syncJson(); markDirty(); renderEditor();
+      note = pruned.removed.map(x => `mẫu ${x.form}: bỏ ${x.gone} dòng trống, còn ${x.left}`).join("; ");
+    }
     const r = await fetch("/api/render", {method:"POST", headers:{"Content-Type":"application/json"},
                                           body: JSON.stringify(DATA)});
     const res = await r.json();
@@ -690,7 +1020,8 @@ $("btnRender").onclick = async () => {
     }
     TOKEN = res.token; PREVIEWS = res.previews || {}; DIRTY = false;
     $("status").innerHTML = alertHtml("ok", "✓",
-      `Đã sinh <b>${res.files.length} biên bản</b> — xem trước bên dưới rồi tải file.`) +
+      `Đã sinh <b>${res.files.length} biên bản</b> — xem trước bên dưới rồi tải file.` +
+      (note ? `<div class="sub">Đã bỏ dòng trống: ${esc(note)}.</div>` : "")) +
       problemsHtml(res.warnings);
     $("previewCard").style.display = "block";
     $("btnZip").style.display = "inline-flex";
@@ -803,7 +1134,9 @@ const _showPreview = showPreview;
 showPreview = function(name){ currentPreview = name; return _showPreview(name); };
 
 /* ---------------- khởi động ---------------- */
-loadData(JSON.parse(SAMPLE)).catch(() => {});
+loadData(JSON.parse(SAMPLE)).then(() => offerDraftRestore()).catch(() => {});
+// đóng trang / đổi tab: ghi nháp ngay, không đợi hẹn giờ
+window.addEventListener("beforeunload", () => { if(HIST.stack.length > 1) saveDraft(); });
 fetch("/api/ai/status").then(r => r.json()).then(s => {
   ENV_KEY = !!(s && s.has_env_key);
   if(ENV_KEY){
@@ -823,5 +1156,6 @@ fetch("/api/ai/status").then(r => r.json()).then(s => {
   setAiStatus("Chưa kiểm tra được trạng thái API key.", "warn");
 });
 </script>
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
 </body>
 </html>

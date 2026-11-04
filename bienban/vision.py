@@ -294,15 +294,21 @@ def call_gemini(
     key: str | None = None,
     model: str | None = None,
     forms: Iterable[str] | None = None,
+    prompt_override: str | None = None,
+    max_tokens: int = 16384,
 ) -> dict:
-    """Gửi ảnh cho Gemini, trả về JSON thô (đã parse)."""
+    """Gửi ảnh cho Gemini, trả về JSON thô (đã parse).
+
+    ``prompt_override`` cho phép dùng lại đường gửi ảnh này cho việc khác
+    (ví dụ bước soát số liệu trong :mod:`bienban.checks`).
+    """
     if not images:
         raise GeminiError("Chưa có ảnh nào để nhận dạng")
     if len(images) > MAX_IMAGES:
         raise GeminiError(f"Chỉ gửi tối đa {MAX_IMAGES} ảnh một lần")
     key = resolve_key(key)
     model = _wire_model(model or DEFAULT_MODEL)
-    prompt = build_prompt(forms)
+    prompt = prompt_override or build_prompt(forms)
 
     parts: list[dict] = [{"text": prompt}]
     for i, blob in enumerate(images):
@@ -315,7 +321,7 @@ def call_gemini(
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",
-            "maxOutputTokens": 16384,
+            "maxOutputTokens": max_tokens,
         },
     }
     url = f"{GEMINI_BASE}/models/{model}:generateContent?key={key}"

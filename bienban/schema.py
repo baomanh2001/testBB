@@ -33,11 +33,23 @@ from .spec import TEMPLATES, TITLES
 COMMON_GROUP = {
     "title": "Thông tin chung (áp dụng cho mọi biên bản)",
     "fields": [
+        # Thứ tự BÁM ĐÚNG thứ tự in: Số biên bản (SỐ: …) và Ngày lập (NGÀY: …)
+        # nằm ở khối tiêu đề, trước Tên công trình.
+        {"key": "so_bien_ban", "label": "Số biên bản", "type": "text",
+         "hint": "VD: 50451126/BB-TC — in ở dòng “SỐ:” trên tiêu đề",
+         "part": "header", "path": ["__so_bien_ban__"]},
+        {"key": "ngay_lap_bien_ban", "label": "Ngày lập biên bản", "type": "date",
+         "hint": "In ở dòng “NGÀY:” trên tiêu đề",
+         "part": "header", "path": ["thong_tin_chung", "ngay_lap_bien_ban"]},
         {"key": "ten_cong_trinh", "label": "Tên công trình", "type": "text",
          "hint": "VD: Trạm biến áp 50kVA – DOANH NGHIỆP TƯ NHÂN E-GREEN",
          "path": ["thong_tin_chung", "ten_cong_trinh"]},
         {"key": "dia_chi", "label": "Địa chỉ", "type": "text",
          "path": ["thong_tin_chung", "dia_chi"]},
+        {"key": "chi_danh", "label": "Chỉ danh", "type": "text",
+         "hint": "VD: MCCB 250A / LA 18kV-10kA / FCO – 100A. Để trống = ghép tự động",
+         "part": "project", "only": ["45", "46", "47"],
+         "path": ["__block_field__", "chi_danh"]},
         {"key": "don_vi_yeu_cau", "label": "Đơn vị yêu cầu", "type": "text",
          "path": ["thong_tin_chung", "don_vi_yeu_cau"]},
         {"key": "ly_do_kiem_dinh", "label": "Lý do kiểm định", "type": "select",
@@ -48,13 +60,11 @@ COMMON_GROUP = {
          "path": ["thong_tin_chung", "noi_kiem_dinh"]},
         {"key": "ngay_kiem_dinh", "label": "Ngày kiểm định", "type": "date",
          "path": ["thong_tin_chung", "ngay_kiem_dinh"]},
-        {"key": "ngay_lap_bien_ban", "label": "Ngày lập biên bản", "type": "date",
-         "path": ["thong_tin_chung", "ngay_lap_bien_ban"]},
-        {"key": "nguoi_thu", "label": "Người thử (ký tên)", "type": "text",
+        {"key": "nguoi_thu", "part": "signature", "label": "Người thử (ký tên)", "type": "text",
          "path": ["thong_tin_chung", "can_bo_ky_ten", "nguoi_thu"]},
-        {"key": "nguoi_kiem_tra", "label": "Người kiểm tra (ký tên)", "type": "text",
+        {"key": "nguoi_kiem_tra", "part": "signature", "label": "Người kiểm tra (ký tên)", "type": "text",
          "path": ["thong_tin_chung", "can_bo_ky_ten", "nguoi_kiem_tra"]},
-        {"key": "p_giam_doc", "label": "P. Giám đốc (ký tên)", "type": "text",
+        {"key": "p_giam_doc", "part": "signature", "label": "P. Giám đốc (ký tên)", "type": "text",
          "path": ["thong_tin_chung", "can_bo_ky_ten", "p_giam_doc"]},
     ],
 }
@@ -85,10 +95,7 @@ def _series(key, label, n, unit="", hint="", item_labels=None):
 FORM_GROUPS: dict[str, list[dict]] = {
     # ------------------------------------------------------------------ 44 --
     "44": [
-        {"title": "Khung biên bản", "fields": [
-            _txt("so_bien_ban", "Số biên bản", "VD: 50441126/BB-TC"),
-        ]},
-        {"title": "I. Lý lịch máy biến áp", "fields": [
+        {"title": "I. Lý lịch máy biến áp", "position": "before_common", "fields": [
             _txt("hieu_may", "Hiệu máy", "VD: EMC"),
             _txt("so_tem", "Số tem", "6 chữ số in trên tem kiểm định", type="code"),
             _txt("so_may", "Số máy", "8 chữ số", type="code"),
@@ -100,8 +107,8 @@ FORM_GROUPS: dict[str, list[dict]] = {
         ]},
         {"title": "II. Quy cách kỹ thuật", "fields": [
             _num("cong_suat_dinh_muc", "Công suất định mức", "kVA", "VD: 50kVA"),
-            _num("dien_ap_dinh_muc", "Điện áp định mức", "kV", "VD: 22/0,4kV"),
             _txt("so_pha", "Số pha", "VD: 01", type="code"),
+            _num("dien_ap_dinh_muc", "Điện áp định mức", "kV", "VD: 22/0,4kV"),
             _txt("to_dau_day", "Tổ đấu dây", "VD: I/I0"),
             _txt("kiem_tra_ben_ngoai", "Kiểm tra bên ngoài", "", type="select",
                  options=_NGOAI),
@@ -152,16 +159,13 @@ FORM_GROUPS: dict[str, list[dict]] = {
     ],
     # ------------------------------------------------------------------ 45 --
     "45": [
-        {"title": "Khung biên bản", "fields": [
-            _txt("so_bien_ban", "Số biên bản", "VD: 50451126/BB-TC"),
-        ]},
         {"title": "I. Thông tin thiết bị", "fields": [
-            _txt("chi_danh", "Chỉ danh", "Để trống = ghép từ Loại + Dòng định mức"),
+            # đúng như bản in: “Hiệu: … - Số cực: …” rồi “Loại: … - Kiểu: …”
             _txt("hieu", "Hiệu", "VD: MITSUBISHI"),
+            _txt("so_cuc", "Số cực", "VD: 03", type="code"),
             _txt("loai", "Loại", "VD: MCCB", type="select",
                  options=["MCCB", "MCB", "ACB", "ELCB", "RCBO"]),
             _txt("kieu", "Kiểu", "VD: NF-250"),
-            _txt("so_cuc", "Số cực", "VD: 03", type="code"),
             _num("dien_ap_dinh_muc", "Điện áp định mức", "V", "VD: 415V"),
             _num("dong_dinh_muc", "Dòng điện định mức", "A", "VD: 250A"),
             _num("dong_ngan_mach_toi_da", "Dòng ngắn mạch tối đa", "kA"),
@@ -196,11 +200,7 @@ FORM_GROUPS: dict[str, list[dict]] = {
     ],
     # ------------------------------------------------------------------ 46 --
     "46": [
-        {"title": "Khung biên bản", "fields": [
-            _txt("so_bien_ban", "Số biên bản", "VD: 50461126/BB-TC"),
-        ]},
         {"title": "I. Thông tin thiết bị", "fields": [
-            _txt("chi_danh", "Chỉ danh", "Để trống = ghép từ Điện áp + Dòng xả"),
             _txt("vat_lieu", "Vật liệu cách điện", "VD: Polymer", type="select",
                  options=["Polymer", "Sứ"]),
             _num("mcov", "MCOV", "kV", "VD: 15,3kV"),
@@ -230,11 +230,7 @@ FORM_GROUPS: dict[str, list[dict]] = {
     ],
     # ------------------------------------------------------------------ 47 --
     "47": [
-        {"title": "Khung biên bản", "fields": [
-            _txt("so_bien_ban", "Số biên bản", "VD: 50471126/BB-TC"),
-        ]},
         {"title": "I. Thông tin thiết bị", "fields": [
-            _txt("chi_danh", "Chỉ danh", "Để trống = ghép từ Dòng định mức"),
             _txt("vat_lieu", "Vật liệu cách điện", "VD: Sứ", type="select",
                  options=["Sứ", "Polymer", "Thủy tinh"]),
             _num("dong_dinh_muc", "Dòng điện định mức", "A", "VD: 100A"),
@@ -265,9 +261,6 @@ FORM_GROUPS: dict[str, list[dict]] = {
     ],
     # ------------------------------------------------------------------ 48 --
     "48": [
-        {"title": "Khung biên bản", "fields": [
-            _txt("so_bien_ban", "Số biên bản", "VD: 50481126/BB-TC"),
-        ]},
         {"title": "I. Bảng kết quả đo điện trở nối đất", "table": {
             "kind": "rows", "key": "rows", "stt": True, "addable": True,
             "columns": [
@@ -291,6 +284,62 @@ FORM_GROUPS: dict[str, list[dict]] = {
 
 # Mẫu 48: các ô phẳng cũ được giữ để tương thích ngược (JSON cũ chỉ có 1 dòng).
 FLAT_48 = ["chi_danh", "ket_noi_trung_tinh", "loai_tiep_dat", "gia_tri_do_Ohm"]
+
+
+def web_groups(form: str) -> list[dict]:
+    """Khối để dựng form, **theo đúng thứ tự in**.
+
+    1. ``header``  – SỐ + NGÀY (khối tiêu đề của mọi mẫu);
+    2. ``before_common`` – khối đứng trước phần thông tin công trình
+       (mẫu 44: “Lý lịch thiết bị” nằm trên Tên công trình);
+    3. ``project`` – tên công trình → địa chỉ → chỉ danh → đơn vị yêu cầu →
+       lý do → nơi → ngày kiểm định;
+    4. phần còn lại của mẫu (quy cách, bảng số liệu, kết luận…), cuối cùng là
+       khối chữ ký.
+
+    Ô riêng của biên bản được gắn tiền tố ``__block`` + mã mẫu để web ghi
+    đúng vào ``DATA["bien_ban_45_mccb"]`` chứ không phải cấp ngoài cùng.
+    """
+    head = [f for f in COMMON_GROUP["fields"] if f.get("part") == "header"]
+    sign = [f for f in COMMON_GROUP["fields"] if f.get("part") == "signature"]
+    project = []
+    for f in COMMON_GROUP["fields"]:
+        if f.get("part") in ("header", "signature"):
+            continue
+        if form not in (f.get("only") or [form]):
+            continue
+        f = dict(f)
+        if f["path"][0] == "__block_field__":      # ô nằm trong biên bản, không phải ô chung
+            f["path"] = ["__block", form] + list(f["path"][1:])
+        project.append(f)
+    groups: list[dict] = [
+        {"title": "Khung biên bản (SỐ / NGÀY)", "fields": head},
+        {"title": "Thông tin công trình", "fields": project},
+    ]
+    for g in FORM_GROUPS[form]:
+        g = dict(g)
+        if "fields" in g:
+            g["fields"] = [
+                dict(f, path=["__block", form] + list(f.get("path") or f["key"].split(".")))
+                for f in g["fields"]
+            ]
+        if g.get("position") == "before_common":
+            groups.insert(1, g)
+        else:
+            groups.append(g)
+    groups.append({"title": "Người ký (in ở hàng chữ ký cuối biên bản)", "fields": sign})
+    return groups
+
+
+def print_order(form: str) -> list[str]:
+    """Thứ tự nhãn **sẽ in ra** của một mẫu — dùng để đối chiếu với file Word."""
+    out: list[str] = []
+    for g in web_groups(form):
+        if "table" in g:
+            out.append("[bảng] " + g["title"])
+            continue
+        out.extend(f["label"] for f in g.get("fields", []))
+    return out
 
 
 def get_groups(form: str) -> list[dict]:
@@ -320,7 +369,7 @@ def web_schema() -> dict:
             form: {
                 "title": TITLES[form],
                 "file": TEMPLATES[form],
-                "groups": FORM_GROUPS[form],
+                "groups": web_groups(form),
             }
             for form in sorted(FORM_GROUPS)
         },
