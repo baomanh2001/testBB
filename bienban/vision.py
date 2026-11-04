@@ -41,8 +41,12 @@ SAFE_MODEL = os.environ.get("GEMINI_SAFE_MODEL", "gemini-2.5-flash")
 #: Số token tối đa cho mỗi lần gọi — Gemini 3 trừ cả token "thinking" vào đây
 MAX_OUTPUT_TOKENS = 32768
 TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", "180"))
-MAX_EDGE = 2000          # px – đủ đọc chữ viết tay, ảnh gửi đi nhỏ
-JPEG_QUALITY = 90
+#: Cạnh dài tối đa khi gửi ảnh. Ảnh biên bản chụp bằng điện thoại (1920×2560)
+#: có 3–5 dòng bảng trong nửa dưới khung; thu về 2000px thì mỗi dòng chữ viết
+#: tay chỉ còn ~24px — dưới ngưỡng đọc tin cậy nên AI hay điền nhầm ô. 2600px
+#: giữ được nét chữ mà vẫn nhẹ (Gemini tự chia ô 768px, 2600px ≈ 3×3 ô).
+MAX_EDGE = int(os.environ.get("GEMINI_MAX_EDGE", "2600"))
+JPEG_QUALITY = 92
 MAX_IMAGES = 24
 
 # Model cũ đã bị khai tử → tự chuyển sang model mặc định
@@ -271,7 +275,23 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
                  "    • Dãy nấc phải giảm dần hoặc tăng dần đều, không nhảy cóc.\n"
                  "    • K1, K2, K3 ở cùng một nấc phải xấp xỉ bằng nhau.\n"
                  "13. Số pha và tổ đấu dây phải khớp nhau: 03 ↔ Dyn11/Yyn0…; "
-                 "01 ↔ I/I0.\n")
+                 "01 ↔ I/I0.\n"
+                 "14. ĐỌC THEO Ô, KHÔNG ĐỌC THEO TRÍ NHỚ MẪU:\n"
+                 "    • Mỗi mục có thể chụp thành 1 ảnh; ảnh có thể bị nghiêng, "
+                 "ngược, thiếu mép. Xoay trong đầu cho thẳng rồi mới đọc.\n"
+                 "    • Khi một ảnh chứa nhiều tờ chồng nhau: chỉ đọc TỜ TRÊN CÙNG.\n"
+                 "    • Chữ viết tay hay ghi tắt: 'Bthg' = Bình thường, 'Đ' = Đạt, "
+                 "'KĐ' = không đạt. Không rõ thì để trống và ghi ai_notes.\n"
+                 "    • Ô có sẵn chữ in (nhãn, đơn vị) KHÔNG phải dữ liệu — chỉ lấy "
+                 "phần chữ/số người ta VIẾT TAY thêm vào.\n"
+                 "    • Tờ nào ghi số hiệu dạng 50xxxxxx/BB-TC thì chép NGUYÊN số đó; "
+                 "hai số cuối nhóm giữa là tháng+năm của đợt (VD 50921026 = mẫu 92, "
+                 "tháng 10/2026) — dùng để phát hiện ảnh lẫn đợt.\n"
+                 "15. Ảnh KHÔNG phải biên bản (chụp tem, công tơ, tủ điện, bao bì, "
+                 "mặt bằng) → chỉ ghi vào \"context_photos\", KHÔNG tạo report.\n"
+                 "16. Nếu ảnh là tờ của MẪU CHƯA CÓ trong danh sách dưới đây, "
+                 "ghi vào \"unknown_forms\": [{\"image_index\": N, "
+                 "\"title\": \"tiêu đề đọc được\"}] — đừng gán bừa sang mẫu khác.\n")
 
     parts.append("=== DANH SÁCH ẢNH ===\n"
                  "Mỗi ảnh được gửi kèm nhãn \"image_index = N\" ngay trước nó. "
@@ -292,6 +312,7 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
     parts.append("=== CẤU TRÚC TRẢ VỀ ===\n"
                  "{\n"
                  '  "context_photos": [{"image_index": 0, "summary": "ảnh này chụp gì"}],\n'
+                 '  "unknown_forms": [{"image_index": 0, "title": "tiêu đề tờ chưa có mẫu"}],\n'
                  '  "reports": [\n'
                  "    {\n"
                  '      "report_type": "'
@@ -335,6 +356,134 @@ def build_prompt(forms: Iterable[str] | None = None) -> str:
         "Nhãn \"Kết luận\" chỉ chép khi ảnh có câu kết luận; không có thì bỏ trống.\n"
     )
     return "\n".join(parts)
+
+
+# --------------------------------------------------------------------------- #
+# Phân loại ảnh trước khi đọc (giải quyết "up nhiều ảnh không biết chia sao")
+# --------------------------------------------------------------------------- #
+#: Từ khoá trên TIÊU ĐỀ tờ biên bản → mẫu tương ứng. Đọc từ trên xuống, dòng
+#: nào khớp trước thì thắng. Xếp theo độ đặc hiệu (ACB trước MCCB, LBFCO
+#: trước FCO) để không nhầm các loại na ná nhau.
+_TITLE_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("93", ("máy cắt hạ thế (acb)", "(acb)", "air circuit breaker")),
+    ("45", ("máy cắt hạ thế (mccb)", "(mccb)", "mccb")),
+    ("95", ("lbfco", "có dập hồ quang")),
+    ("47", ("cầu chì tự rơi", "fco")),
+    ("46", ("chống sét van", "(la)")),
+    ("94", ("chống sét van", "la ")),
+    ("97", ("thông tuyến cáp", "cáp ngầm")),
+    ("109", ("tụ bù", "tụ điện")),
+    ("49", ("máy biến áp 3 pha", "mba 3 pha", "3 pha")),
+    ("44", ("máy biến áp 1 pha", "mba 1 pha", "1 pha")),
+    ("48", ("điện trở nối đất", "nối đất")),
+]
+
+
+def _title_of_form(form: str) -> str:
+    return TITLES.get(form, "")
+
+
+def guess_form(text: str, available: Iterable[str] | None = None) -> str:
+    """Đoán số mẫu từ **chữ đọc được trên ảnh** (chỉ dùng khi AI trả về lạ).
+
+    Trả về ``""`` nếu không đủ căn cứ — khi đó để người dùng chọn tay.
+    """
+    hay = (text or "").lower()
+    hay = re.sub(r"\s+", " ", hay)
+    pool = set(available or TEMPLATES)
+    for form, keys in _TITLE_RULES:
+        if form not in pool:
+            continue
+        if any(k in hay for k in keys):
+            return form
+    # cuối cùng: so khớp đúng tiêu đề in trong biểu mẫu
+    for form in pool:
+        title = _title_of_form(form).lower()
+        if title and title in hay:
+            return form
+    return ""
+
+
+def build_classify_prompt(forms: Iterable[str] | None = None) -> str:
+    """Prompt NGẮN: chỉ hỏi "ảnh này là biên bản mẫu nào", không đọc số liệu.
+
+    Chạy trước bước đọc chi tiết để biết mỗi ảnh thuộc tờ nào — nhờ vậy 15 ảnh
+    lẫn 2 đợt vẫn tách đúng nhóm, và ảnh chụp tem/thiết bị không bị đem đi đọc
+    như biên bản.
+    """
+    forms = [f for f in (forms or sorted(FORM_GROUPS))]
+    lines = [f'{f}: {_title_of_form(f)}' for f in forms]
+    return (
+        "Bạn là chuyên viên nhập liệu của CÔNG TY CP THÍ NGHIỆM ĐIỆN TOÀN CẦU.\n"
+        "Nhiệm vụ: với MỖI ảnh, cho biết nó là tờ biên bản nào. KHÔNG đọc số liệu.\n"
+        "\n"
+        "Các tờ biên bản có thể gặp (mã: tiêu đề in trên tờ):\n"
+        + "\n".join(lines)
+        + "\n\n"
+        "Quy tắc:\n"
+        "1. Nhìn TIÊU ĐỀ ở giữa tờ giấy (chữ hoa, to) để quyết định.\n"
+        "2. Không thấy tiêu đề thì nhìn bảng: cột nào có mặt thì suy ra tờ đó.\n"
+        "3. Ảnh không phải biên bản (chụp tem, công tơ, tủ điện, mặt bằng…): "
+        "form = \"\"\n"
+        "4. Ảnh chỉ là PHẦN DƯỚI của một tờ (trang 2/2): đọc số hiệu ở góc hoặc "
+        "nội dung còn lại; không chắc thì để \"\" và ghi lý do.\n"
+        "5. Trả về JSON thuần:\n"
+        '{\"photos\": [{\"image_index\": 0, \"form\": \"44\", '
+        '\"title\": \"chữ trên tờ\", \"confidence\": \"high\"|\"medium\"|\"low\", '
+        '\"reason\": \"vì sao\"}]}\n'
+    )
+
+
+def classify_images(
+    images: list[bytes],
+    *,
+    key: str | None = None,
+    model: str | None = None,
+    forms: Iterable[str] | None = None,
+    max_tokens: int = 2048,
+) -> list[dict]:
+    """Hỏi model mỗi ảnh là tờ biên bản nào. Lỗi thì trả về danh sách rỗng."""
+    if not images:
+        return []
+    try:
+        raw = call_gemini(images, key=key, model=model, forms=forms,
+                          prompt_override=build_classify_prompt(forms),
+                          max_tokens=max_tokens)
+    except GeminiError:
+        return []
+    photos = raw.get("photos")
+    if not isinstance(photos, list):
+        photos = (raw.get("reports") if isinstance(raw.get("reports"), list) else [])
+    out: list[dict] = []
+    for item in photos:
+        if not isinstance(item, dict):
+            continue
+        form = str(item.get("form") or item.get("report_type") or "").strip()
+        if form not in TEMPLATES:
+            form = ""
+        raw_idx = item.get("image_index")
+        try:
+            idx = int(raw_idx)
+        except (TypeError, ValueError):
+            idx = -1
+        out.append({"image_index": idx, "form": form,
+                    "title": str(item.get("title") or ""),
+                    "confidence": str(item.get("confidence") or ""),
+                    "reason": str(item.get("reason") or "")})
+    return out
+
+
+def group_by_form(photos: list[dict]) -> dict[str, list[int]]:
+    """Gom ``image_index`` theo mẫu; ảnh không nhận ra nằm ở khoá ``""``."""
+    groups: dict[str, list[int]] = {}
+    for ph in photos or []:
+        idx = ph.get("image_index", -1)
+        if not isinstance(idx, int) or idx < 0:
+            continue
+        groups.setdefault(ph.get("form") or "", []).append(idx)
+    for v in groups.values():
+        v.sort()
+    return groups
 
 
 # --------------------------------------------------------------------------- #
@@ -472,23 +621,56 @@ def _is_gemini3(model: str) -> bool:
 
 
 def parse_json_loose(text: str) -> dict:
-    """Bóc JSON khỏi câu trả lời (kể cả khi bị bọc ```json … ```)."""
+    """Bóc JSON khỏi câu trả lời (kể cả khi bị bọc ```json … ```).
+
+    **Luôn trả về ``dict``.** Model đôi khi trả thẳng một *mảng* biên bản
+    (``[{...}, {...}]``) hoặc bọc trong ``{"reports": [...]}``; cả hai đều được
+    quy về một object để phần sau khỏi phải kiểm tra kiểu. Trước đây mảng lọt
+    xuống dưới và gây ``'list' object has no attribute 'get'``.
+    """
     text = (text or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
+
+    def _load(candidate: str):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            return None
+
+    got = _load(text)
+    if got is None:
         start, end = text.find("{"), text.rfind("}")
         if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end + 1])
-            except json.JSONDecodeError:
-                pass
+            got = _load(text[start:end + 1])
+        if got is None:
+            # có thể là mảng trần bị cắt mất dấu ngoặc
+            start, end = text.find("["), text.rfind("]")
+            if start >= 0 and end > start:
+                got = _load(text[start:end + 1])
+
+    if isinstance(got, (dict, list)):
+        return _as_result_object(got)
     raise GeminiFatal(
         "Gemini trả về JSON không hợp lệ (có thể bị cắt vì hết token). "
         "Thử lại với ít ảnh hơn hoặc chọn model flash."
     )
+
+
+def _as_result_object(value) -> dict:
+    """Quy mọi dạng JSON hợp lý về ``{"reports": [...]}``."""
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, list):
+        return {}
+    items = [v for v in value if isinstance(v, dict)]
+    # mảng các biên bản: phần tử có "report_type"/"data"/"rows"
+    if any(("report_type" in v) or ("data" in v) or ("rows" in v) for v in items):
+        return {"reports": items}
+    # mảng lồng một phần tử: [{"reports": [...]}]
+    if len(items) == 1:
+        return items[0]
+    return {"reports": items}
 
 
 def call_gemini(
@@ -686,7 +868,7 @@ def _row_from_mapping(mapping: dict, columns: list[dict], *, stt: bool, index: i
     return row
 
 
-def normalize_ai_result(raw: dict, *, forms: Iterable[str] | None = None) -> dict:
+def normalize_ai_result(raw, *, forms: Iterable[str] | None = None) -> dict:
     """Đổi JSON của Gemini thành JSON chuẩn của tool.
 
     Kết quả: ``{"thong_tin_chung": {...}, "bien_ban_44_mba": {...}, ...,
@@ -695,6 +877,8 @@ def normalize_ai_result(raw: dict, *, forms: Iterable[str] | None = None) -> dic
     Hàm này chịu được cả JSON hơi lệch: ``data`` dạng phẳng hay lồng, bảng dạng
     list-of-object hay list-of-list, ``bien_ban_45_mccb: {rows: [...]}`` …
     """
+    # Gemini có thể trả mảng trần hoặc {"reports": [...]}: quy về dict trước.
+    raw = _as_result_object(raw)
     forms = list(forms or sorted(FORM_GROUPS))
     out: dict = {}
     notes: list[str] = []
@@ -824,10 +1008,23 @@ def normalize_ai_result(raw: dict, *, forms: Iterable[str] | None = None) -> dic
 
         notes.extend(str(n) for n in (rep.get("ai_notes") or []))
         idx = rep.get("source_image_indices") or []
-        if idx:
-            sources[form] = [int(i) for i in idx if isinstance(i, (int, float))]
+        src_idx = [int(i) for i in idx if isinstance(i, (int, float))]
 
-        out[DATA_KEYS[form]] = block
+        key = DATA_KEYS[form]
+        if key not in out:
+            out[key] = block
+        else:
+            # ĐÃ CÓ biên bản cùng mẫu → KHÔNG ghi đè (trước đây biên bản thứ 2
+            # của cùng mẫu bị mất sạch). Gom vào danh sách "_extra" để bộ sinh
+            # in thêm một bản riêng cho từng biên bản.
+            extra = out.setdefault("_extra", {}).setdefault(key, [])
+            extra.append(block)
+            notes.append(
+                f"Mẫu {form}: có {len(extra) + 1} biên bản cùng loại — "
+                f"mỗi biên bản in thành một file riêng")
+        if src_idx:
+            sources.setdefault(form, [])
+            sources[form] = sorted(set(sources[form]) | set(src_idx))
 
     out["_ai"] = {"notes": notes, "sources": sources, "context": context}
     return out

@@ -148,6 +148,116 @@ def derive_values(form: str, values: dict) -> dict:
     return values
 
 
+
+# --------------------------------------------------------------------------- #
+# Xoá số liệu "mồi" in sẵn trong mẫu Word
+# --------------------------------------------------------------------------- #
+#: Ô chứa số đo (có phần thập phân, hoặc dấu >, hoặc số nguyên dài).
+#: KHÔNG khớp "1".."5" của cột Nấc/STT nên không phá cấu trúc bảng.
+_M_MEASURE = re.compile(r"^(?:[><]\s*)?\d{1,6}(?:[.,]\d+)?$")
+
+
+#: Nhận xét kết luận chép sẵn trong mẫu ("Đạt") — cũng phải dọn.
+_M_VERDICT = re.compile(r"^(đạt|không đạt|pass|fail)$", re.I)
+
+
+def _is_measure_text(txt: str) -> bool:
+    """``True`` nếu ô đang chứa một *số đo* chép sẵn từ biên bản mẫu."""
+    t = (txt or "").strip()
+    if not t or len(t) > 12:
+        return False
+    if not _M_MEASURE.match(t):
+        return False
+    # số nguyên 1..2 chữ số = số thứ tự / số nấc → giữ
+    if t.isdigit():
+        return len(t) >= 3
+    return True
+
+
+def wipe_template_measures(doc, form: str) -> int:
+    """Xoá các số đo in sẵn trong **thân bảng** của mẫu.
+
+    Vì sao cần: các file mẫu được dựng từ biên bản thật (092, 44…) nên trong
+    ô bảng vẫn còn số của lần đo cũ. Nếu lần này AI đọc hụt một ô, bản in sẽ
+    lặng lẽ giữ **số cũ** — nguy hiểm hơn nhiều so với ô trống. Hàm này dọn
+    sạch trước, rồi bộ điền mới ghi số thật vào.
+
+    Chỉ đụng tới ô nằm **sau hàng tiêu đề** và có nội dung đúng là một số đo;
+    ô nhãn (“Cao – Vỏ”), ô đơn vị (“R60″ (MΩ)”) và cột Nấc/STT giữ nguyên.
+    """
+    headers = _headers_for(form)
+    removed = 0
+    for probe_key in _table_keys_for(form):
+        t = _find_table(doc, probe_key)
+        if t is None:
+            continue
+        # Số đo có thể nằm ngay trong HÀNG TIÊU ĐỀ (ô gộp dọc "an: 0,885…"),
+        # nên chỉ bỏ qua đúng ô tiêu đề, không bỏ qua cả hàng theo chỉ số.
+        header_rows = headers.get(probe_key, 1)
+        seen: set = set()
+        for ri, row in enumerate(t.rows):
+            for ci, cell in enumerate(row.cells):
+                tc = cell._tc
+                # ô gộp: nhiều `cell` trỏ về cùng một phần tử XML — so sánh
+                # DANH TÍNH của phần tử (Python `id()` bị tái dùng sau khi GC).
+                if tc in seen:
+                    continue
+                seen.add(tc)
+                if _is_multi_measure(cell.text):
+                    # ô gộp kiểu "an: 0,885\nbn: 0,887\ncn: 0,889": bỏ phần
+                    # số, chỉ giữ nhãn để filler ghi lại đủ 3 dòng.
+                    _strip_number_suffix(cell)
+                    removed += 1
+                    continue
+                is_measure = _is_measure_text(cell.text) or bool(
+                    _M_VERDICT.match(cell.text.strip()))
+                if not is_measure and ci > 0:
+                    # cột số liệu (bỏ cột Nấc/STT ở ci=0) → "50", "3", "5",
+                    # ">5000" đều là số đo, kể cả khi nằm ở hàng tiêu đề gộp
+                    is_measure = bool(re.fullmatch(r"[><]?\d{1,4}", cell.text.strip()))
+                if not is_measure:
+                    continue
+                for extra in cell.paragraphs[1:]:
+                    extra._element.getparent().remove(extra._element)
+                if cell.paragraphs:
+                    for run in list(cell.paragraphs[0].runs):
+                        run._element.getparent().remove(run._element)
+                removed += 1
+    return removed
+
+
+#: Ô gộp nhiều số: "an: 0,885\nbn: 0,887\ncn: 0,889"
+_M_MULTI = re.compile(r"[A-Za-zà-ỹ]{1,4}\s*:\s*(?:[><]\s*)?\d")
+
+
+def _is_multi_measure(txt: str) -> bool:
+    """``True`` nếu ô gộp chứa từ 1 số đo trở lên dạng ``nhãn: số``."""
+    return bool(_M_MULTI.search(txt or ""))
+
+
+def _strip_number_suffix(cell) -> None:
+    """Xoá phần số của ô gộp, giữ lại nhãn (``an:``, ``bn:``, ``cn:``)."""
+    for p in cell.paragraphs:
+        for run in p.runs:
+            t = run.text
+            if not _M_MULTI.search(t):
+                continue
+            # giữ mọi thứ TRƯỚC nhãn đầu tiên (VD "Cuộn dây hạ áp (mΩ)"),
+            # bỏ toàn bộ phần "an: 0,885 / bn: 0,887 / cn: 0,889"
+            m = _M_MULTI.search(t)
+            run.text = t[:m.start()]
+
+
+def _headers_for(form: str) -> dict[str, int]:
+    from .spec import TABLE_HEADER_ROWS
+    return TABLE_HEADER_ROWS
+
+
+def _table_keys_for(form: str) -> list[str]:
+    """Các bảng cần dọn dẹp cho mẫu này (theo ``LABELS``)."""
+    return [item["table"] for item in LABELS[form] if item.get("table")]
+
+
 # --------------------------------------------------------------------------- #
 # Lớp 1: khung (số biên bản, ngày lập, tiêu đề)
 # --------------------------------------------------------------------------- #
@@ -519,14 +629,16 @@ def fill_mccb(doc, block: dict, cfg, log) -> list[str]:
         r = block.get("r_cach_dien_Mohm") or {}
         tx = block.get("r_tiep_xuc_uohm") or {}
         rows = [[
-            norm_number(r.get("close") or cfg.get("defaults", {}).get("r_close", ">5000")),
-            norm_number(r.get("open") or cfg.get("defaults", {}).get("r_open", ">5000")),
+            # KHÔNG mặc định ">5000": đó là số bịa. Không đọc được thì để trống,
+            # người dùng in ra điền tay (đúng nguyên tắc "ô trống chỉ là cảnh báo").
+            norm_number(r.get("close") or cfg.get("defaults", {}).get("r_close", "")),
+            norm_number(r.get("open") or cfg.get("defaults", {}).get("r_open", "")),
             norm_number(tx.get("pha_a")),
             norm_number(tx.get("pha_b")),
             norm_number(tx.get("pha_c")),
             norm_number(block.get("u_test_kV")),
             norm_number(block.get("dong_cat_s")),
-            norm_text(block.get("ket_qua") or "Đạt"),
+            norm_text(block.get("ket_qua") or ""),
             digits_only(block.get("so_tem")),
         ]]
     table = _find_table(doc, "mccb")
@@ -575,7 +687,7 @@ def fill_fco(doc, block: dict, cfg, log) -> list[str]:
             norm_number(u.get("kho")),
             norm_number(u.get("uot")),
             norm_number(block.get("dong_cat_s")),
-            norm_text(block.get("ket_qua") or "Đạt"),
+            norm_text(block.get("ket_qua") or ""),
         ]]
     return _fill_row_table(doc, "fco", rows, log, "Bảng kết quả kiểm định FCO")
 
@@ -851,6 +963,7 @@ def render_form(
     out_dir: Path | str,
     cfg: dict | None = None,
     log: Callable[[str], None] = lambda s: None,
+    suffix: str = "",
 ) -> tuple[Path, list[str]]:
     """Sinh 1 biên bản. Trả về ``(đường dẫn file, danh sách cảnh báo)``."""
     cfg = cfg or load_config()
@@ -872,6 +985,12 @@ def render_form(
 
     doc = docx.Document(str(tpl))
     warnings: list[str] = []
+
+    # Dọn số đo in sẵn trong mẫu TRƯỚC khi điền: ô nào không đọc được sẽ để
+    # trống (in dấu "-") thay vì lặng lẽ giữ số của biên bản cũ.
+    wiped = wipe_template_measures(doc, form)
+    if wiped:
+        log(f"    ✓ Dọn {wiped} ô số liệu cũ in sẵn trong mẫu")
 
     # số biên bản: ưu tiên block, sau đó data
     merged = dict(data)
@@ -924,7 +1043,7 @@ def render_form(
     out_dir.mkdir(parents=True, exist_ok=True)
     so = norm_text(block.get("so_bien_ban") or "")
     safe_so = re.sub(r"[^0-9A-Za-z]+", "", so) or f"BB{form}"
-    out_path = out_dir / f"{form}_{safe_so}.docx"
+    out_path = out_dir / f"{form}_{safe_so}{suffix}.docx"
     doc.save(str(out_path))
     return out_path, warnings
 
@@ -1011,8 +1130,10 @@ def render_all(
     cfg = cfg or load_config()
     forms = forms or list(TEMPLATES)
     paths, warnings = [], []
+    extra: dict = data.get("_extra") or {}
     for form in forms:
-        if DATA_KEYS[form] not in data:
+        key = DATA_KEYS[form]
+        if key not in data:
             continue
         log(f"  → Biên bản {form}: {TITLES[form]}")
         path, warns = render_form(
@@ -1020,4 +1141,22 @@ def render_all(
         )
         paths.append(path)
         warnings += [f"[BB {form}] {w}" for w in warns]
+
+        # Cùng một mẫu nhưng nhiều biên bản (VD 2 tờ LA của 2 đợt) → in thêm
+        # mỗi biên bản một file, không ghi đè lên nhau.
+        for i, block in enumerate(extra.get(key) or [], start=1):
+            if not isinstance(block, dict) or not block:
+                continue
+            one = {k: v for k, v in data.items() if k != "_extra"}
+            one[key] = block
+            log(f"  → Biên bản {form} #{i + 1}: {block.get('so_bien_ban') or ''}")
+            try:
+                path2, warns2 = render_form(
+                    form, one, templates_dir=templates_dir, out_dir=out_dir,
+                    cfg=cfg, log=log, suffix=f"-{i + 1}")
+            except Exception as exc:                        # pragma: no cover
+                warnings.append(f"[BB {form}] Không in được biên bản thứ {i + 1}: {exc}")
+                continue
+            paths.append(path2)
+            warnings += [f"[BB {form} #{i + 1}] {w}" for w in warns2]
     return paths, warnings

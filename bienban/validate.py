@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from .normalize import digits_only, norm_date
+from .spec import FORM_DOC_CODE, decode_doc_no, expected_doc_no
 
 
 @dataclass
@@ -239,6 +240,24 @@ def validate(data: dict) -> list[Problem]:
                 problems.append(
                     Problem("warn", f"{key}.so_bien_ban", f"Số '{so}' thiếu hậu tố '/BB-TC'")
                 )
+            # --- phiên cũ hay phiên mới? -----------------------------------
+            # Số hiệu = 50 | mã văn bản | tháng | năm. Đối chiếu với ngày
+            # kiểm định để phát hiện tờ bị trộn từ đợt khác.
+            info = decode_doc_no(so)
+            ngay = str(tt.get("ngay_kiem_dinh") or "").strip()
+            if info.get("ok") and ngay:
+                want = expected_doc_no(form, ngay)
+                if want and so.split("/")[0].strip() != want.split("/")[0].strip():
+                    problems.append(Problem(
+                        "warn", f"{key}.so_bien_ban",
+                        f"Số {so} là phiên {info['phien']}, nhưng ngày kiểm định "
+                        f"{ngay} → đúng ra phải là {want}. Có thể tờ này thuộc "
+                        f"đợt khác (cùng mẫu nhưng khác ngày)."))
+                elif info.get("code") and info["code"] != FORM_DOC_CODE.get(form):
+                    problems.append(Problem(
+                        "warn", f"{key}.so_bien_ban",
+                        f"Mã văn bản trong số hiệu là {info['code']}, không phải "
+                        f"{FORM_DOC_CODE.get(form)} của mẫu {form}."))
         if form == "44":
             if block.get("so_may"):
                 _check_code(block["so_may"], f"{key}.so_may", problems)

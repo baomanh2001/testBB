@@ -229,3 +229,59 @@ TABLE_HEADER_ROWS = {
     "voltage_test": 1, "mccb": 2, "la": 1, "fco": 2, "earth": 1,
     "insulation_3p": 1, "r_dc_3p": 2, "ratio_3p": 1, "voltage_test_3p": 1,
 }
+
+# --------------------------------------------------------------------------- #
+# Giải mã SỐ BIÊN BẢN: 50 | <mã văn bản> | <tháng> | <năm>
+# --------------------------------------------------------------------------- #
+#: Mã văn bản đi kèm từng mẫu (2 chữ số cuối của số hiệu in trên tờ).
+#: VD biên bản MBA 3 pha: ``50|92|10|26`` → ``50921026/BB-TC``.
+FORM_DOC_CODE = {
+    "44": "44",
+    "45": "45",
+    "46": "46",
+    "47": "47",
+    "48": "48",
+    "49": "92",
+    "93": "93",
+    "94": "94",
+    "95": "95",
+    "96": "96",
+    "97": "97",
+    "109": "09",
+}
+
+
+def decode_doc_no(so: str) -> dict:
+    """Bóc số biên bản thành các phần: mã văn bản, tháng, năm của phiên.
+
+    ``"50921026/BB-TC"`` → ``{"ok": True, "code": "92", "thang": 10, "nam": 2026,
+    "phien": "tháng 10/2026"}``.
+
+    Định dạng công ty: **50** + mã văn bản (2 số) + tháng (2 số) + năm (2 số).
+    Nhờ vậy biết ngay một tờ là **phiên cũ hay phiên mới** mà không cần đoán.
+    """
+    digits = "".join(ch for ch in str(so or "") if ch.isdigit())
+    if len(digits) != 8 or not digits.startswith("50"):
+        return {"ok": False, "raw": str(so or "")}
+    code, thang, nam = digits[2:4], digits[4:6], digits[6:8]
+    if not (1 <= int(thang) <= 12):
+        return {"ok": False, "raw": str(so or "")}
+    return {
+        "ok": True,
+        "prefix": digits[:2],
+        "code": code,
+        "thang": int(thang),
+        "nam": 2000 + int(nam),
+        "phien": f"tháng {int(thang):02d}/{2000 + int(nam)}",
+    }
+
+
+def expected_doc_no(form: str, ngay: str) -> str:
+    """Số hiệu đúng phải có, suy từ mẫu + ngày kiểm định (``dd/mm/yyyy``)."""
+    import re as _re
+
+    m = _re.match(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$", str(ngay or ""))
+    code = FORM_DOC_CODE.get(str(form))
+    if not m or not code:
+        return ""
+    return f"50{code}{int(m.group(2)):02d}{m.group(3)[2:]}/BB-TC"

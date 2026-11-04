@@ -279,6 +279,55 @@ def api_check():
     })
 
 
+@app.post("/api/ai/classify")
+def api_ai_classify():
+    """Chỉ PHÂN LOẠI ảnh: mỗi ảnh là tờ biên bản nào (chưa đọc số liệu).
+
+    Dùng trước bước nhận dạng để 15 ảnh lẫn nhiều đợt vẫn được tách đúng nhóm,
+    và để người dùng thấy ngay "ảnh 1 → mẫu 49, ảnh 2 → mẫu 48…" trước khi
+    tốn thời gian đọc chi tiết.
+    """
+    uploads = [f for f in request.files.getlist("images") if f and f.filename]
+    if not uploads:
+        return jsonify({"ok": False, "error": "Chưa chọn ảnh nào"}), 400
+    if len(uploads) > vision.MAX_IMAGES:
+        return jsonify({"ok": False,
+                        "error": f"Chỉ gửi tối đa {vision.MAX_IMAGES} ảnh mỗi lần"}), 400
+    blobs = [f.read() for f in uploads]
+    if any(not b for b in blobs):
+        return jsonify({"ok": False, "error": "Có ảnh rỗng hoặc đọc lỗi"}), 400
+    _remember_images(blobs)
+
+    forms = [f for f in (request.form.get("forms") or "").split(",") if f in TEMPLATES]
+    cfg0 = load_config().get("ai") or {}
+    model = ((request.form.get("model") or "").strip()
+             or (cfg0.get("default_model") or "").strip() or None)
+    try:
+        photos = vision.classify_images(blobs, key=_gemini_key(), model=model,
+                                        forms=forms or None)
+    except vision.GeminiError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    known = {ph["image_index"] for ph in photos}
+    # ảnh model bỏ sót: đoán theo tên file (nhiều máy lưu tên kiểu "44_...jpg")
+    for i, up in enumerate(uploads):
+        if i in known:
+            continue
+        form = vision.guess_form(up.filename or "", forms or None)
+        photos.append({"image_index": i, "form": form, "title": "",
+                       "confidence": "low" if form else "",
+                       "reason": "suy từ tên file" if form else "không rõ"})
+
+    photos.sort(key=lambda ph: ph["image_index"])
+    return jsonify({
+        "ok": True,
+        "photos": photos,
+        "groups": vision.group_by_form(photos),
+        "notes": [f"Ảnh {ph['image_index'] + 1} chưa nhận ra tờ nào"
+                  for ph in photos if not ph["form"]],
+    })
+
+
 @app.post("/api/merge")
 def api_merge():
     """Gộp kết quả nhận dạng của nhiều nhóm ảnh → một bộ biên bản.
