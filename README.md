@@ -199,7 +199,7 @@ dễ bị cắt cụt JSON của biên bản 44.
 | `GET /api/ai/prompt?forms=44,45` | prompt thật sẽ gửi Gemini |
 | `POST /api/ai/recognize` | `multipart/form-data`: `images` (nhiều ảnh), `model`, `forms` → `{ok, data, notes, blocks, problems}` |
 | `POST /api/normalize` | JSON bất kỳ → JSON chuẩn của tool (dùng cho dữ liệu cũ) |
-| `POST /api/validate` | kiểm tra dữ liệu trước khi in |
+| `POST /api/validate` | kiểm tra dữ liệu; `problems[].blocking` cho biết lỗi có chặn in hay không |
 | `POST /api/render` | sinh biên bản → `{token, files, previews, zip_url}` |
 | `GET /download/<token>/<file>` · `/preview/<token>/<file>` | tải / xem trước |
 
@@ -287,12 +287,27 @@ Sao chép `config.example.json` → `config.json` rồi sửa. Các nhóm chính
       │  (LLM / người đọc — xem prompts/extract.md)
       ▼
 JSON chuẩn ──► validate ──► điền Word ──► 5 file .docx
+                  │             (ô trống in dấu “-”, KHÔNG chặn in)
                               │
                               ├─ lớp 1: khung (SỐ, NGÀY, tiêu đề thiết bị)
                               ├─ lớp 2: các ô "Nhãn: giá trị" (kể cả 2–3 ô/dòng)
                               └─ lớp 3: bảng số liệu (cách điện, R một chiều,
                                         tỉ số biến áp, MCCB, LA, FCO, nối đất)
 ```
+
+### Ô trống không chặn in
+
+Thiếu Số biên bản, thiếu Địa chỉ, thiếu ngày… chỉ là **cảnh báo**: tool vẫn
+sinh file Word và vẫn cho xem trước, ô trống in ra dấu `-` để bổ sung tay sau
+khi in. Chỉ hai trường hợp mới chặn (HTTP 400):
+
+* JSON gửi lên không phải object;
+* không có khối `bien_ban_44..48` nào → không có gì để in.
+
+Trong JSON của `/api/validate` và `/api/render`, mỗi mục `problems[]` có
+`blocking: true|false` để giao diện phân biệt “lỗi chặn” và “cảnh báo”.
+CLI: `python -m bienban check data.json` trả mã 2 khi có lỗi chặn, 1 khi chỉ có
+cảnh báo, 0 khi sạch.
 
 Ba điểm kỹ thuật đáng chú ý:
 

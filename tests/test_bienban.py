@@ -226,14 +226,19 @@ class TestValidate:
                    for p in validate(d))
 
     def test_bad_date(self, data):
+        """Ngày sai định dạng: cảnh báo, KHÔNG chặn in (in nguyên chữ đã nhập)."""
         d = json.loads(json.dumps(data))
         d["thong_tin_chung"]["ngay_kiem_dinh"] = "31/02/2026"
-        assert any(p.level == "error" for p in validate(d))
+        probs = [p for p in validate(d) if "ngay_kiem_dinh" in p.where]
+        assert probs and all(p.level == "warn" and not p.blocking for p in probs)
 
     def test_missing_insulation(self, data):
+        """Thiếu số liệu: cảnh báo để người dùng biết, nhưng vẫn sinh Word được."""
         d = json.loads(json.dumps(data))
         del d["bien_ban_44_mba"]["r_cach_dien_Mohm"]["ha1_ha2"]["r60"]
-        assert any(p.level == "error" and "ha1_ha2" in p.where for p in validate(d))
+        probs = [p for p in validate(d) if "ha1_ha2" in p.where]
+        assert probs
+        assert all(p.level == "warn" and not p.blocking for p in probs)
 
     def test_us_decimal_separator_warns(self, data):
         d = json.loads(json.dumps(data))
@@ -468,6 +473,32 @@ class TestVision:
             assert label in prompt
         assert "MÁY BIẾN ÁP 1 PHA" in prompt
 
+    def test_prompt_distinguishes_44_and_49(self):
+        """3 pha phải có neo nhận diện riêng, không lẫn với MBA 1 pha."""
+        from bienban.vision import build_prompt
+
+        prompt = build_prompt(["44", "49"])
+        # mỗi mẫu có dòng nhận diện
+        assert "NHẬN DIỆN MẪU 44" in prompt and "NHẬN DIỆN MẪU 49" in prompt
+        assert "Dyn11" in prompt and "K1/K2/K3" in prompt
+        assert "TUYỆT ĐỐI không trả về report_type 44" in prompt
+        # quy tắc đọc bảng + tự kiểm chéo
+        for rule in ("Cao – Vỏ", "Hạ 1 – Hạ 2", "Kht ≈ R60/R15", "Ô gộp"):
+            assert rule in prompt, rule
+        # report_type chỉ gồm mẫu đang chọn (trước đây cứng 44–48)
+        line = next(l for l in prompt.splitlines() if '"report_type"' in l)
+        assert '"44"' in line and '"49"' in line and '"48"' not in line
+
+    def test_prompt_field_hints_say_where_to_read(self):
+        from bienban.vision import build_prompt
+
+        prompt = build_prompt(["49"])
+        assert "ĐỌC Ở:" in prompt
+        # K1 phải phân biệt với Kht
+        assert "KHÔNG phải Kht" in prompt
+        # ví dụ bảng 3 pha có thật
+        assert "VÍ DỤ BẢNG 3 PHA" in prompt and "57,759" in prompt
+
     def test_prompt_subset(self):
         from bienban.vision import build_prompt
 
@@ -631,7 +662,7 @@ class TestAIEndpoints:
     def test_schema_endpoint(self, client):
         body = client.get("/api/ai/schema").get_json()
         assert body["ok"] is True
-        assert set(body["schema"]["forms"]) == {"44", "45", "46", "47", "48"}
+        assert set(body["schema"]["forms"]) == {"44", "45", "46", "47", "48", "49"}
         for form in body["schema"]["forms"].values():
             for g in form["groups"]:
                 assert "fields" in g or "table" in g
@@ -688,7 +719,8 @@ class TestAIEndpoints:
         assert len(render["files"]) == 2
         assert any(f.startswith("45_") for f in render["files"])
 
-    def test_render_refuses_incomplete_common(self, client):
+    def test_render_allows_incomplete_common(self, client):
+        """Thông tin chung còn trống vẫn phải sinh được Word để xem trước."""
         from bienban import vision
 
         data = vision.normalize_ai_result({"reports": [{
@@ -697,9 +729,12 @@ class TestAIEndpoints:
                 "ket_noi_trung_tinh": "Có", "loai_tiep_dat": "Làm việc",
                 "gia_tri_do_Ohm": "3,52", "thiet_bi_do": "KEW 4105DL"}}]})
         body = client.post("/api/render", json=data).get_json()
-        assert body["ok"] is False
-        missing = " ".join(p["where"] for p in body["problems"] if p["level"] == "error")
-        assert "thong_tin_chung.dia_chi" in missing
+        assert body["ok"] is True, body
+        assert body["files"] and body["previews"]
+        warned = " ".join(p["where"] for p in body["problems"] if not p["blocking"])
+        assert "thong_tin_chung.dia_chi" in warned
+        # không có lỗi chặn nào
+        assert not [p for p in body["problems"] if p["blocking"]]
 
     def test_recognize_nothing_found(self, client, monkeypatch):
         import io
@@ -835,7 +870,7 @@ class TestUI:
             assert must in b45
 
     def test_every_template_field_is_editable(self):
-        """Mọi ô nhãn của 5 mẫu đều phải có input trong schema (để sửa được)."""
+        """Mọi ô nhãn của 6 mẫu đều phải có input trong schema (để sửa được)."""
         from bienban.schema import fields_of, tables_of
         from bienban.spec import LABELS
 
@@ -871,6 +906,10 @@ class TestUI:
                         "no_load": "khong_tai",
                         "short_circuit": "ngan_mach",
                         "voltage_test": "thu_dien_ap_tang_cao",
+                        # mẫu 49: các bảng 3 pha biểu diễn bằng ô/dãy số (như mẫu 44)
+                        "voltage_test_3p": "thu_dien_ap_tang_cao",
+                        "r_dc_3p": "r_cuon_day_1_chieu_ohm",
+                        "ratio_3p": "ti_so_bien_ap",
                     }
                     if it["table"] in series_prefix:
                         prefix = series_prefix[it["table"]]
@@ -878,7 +917,9 @@ class TestUI:
                         continue
                     # 45/46/47/48: bảng kết quả của Word tương ứng khoá dữ liệu chung "rows"
                     alias = {"insulation": "r_cach_dien_Mohm", "mccb": "rows",
-                             "la": "rows", "fco": "rows", "earth": "rows"}
+                             "la": "rows", "fco": "rows", "earth": "rows",
+                             # mẫu 49 (MBA 3 pha) dùng bảng riêng
+                             "insulation_3p": "r_cach_dien_Mohm"}
                     key = alias.get(it["table"], it["table"])
                     assert key in tables, (form, it["table"])
 
@@ -1194,6 +1235,17 @@ class TestCheckEndpoint:
 
         app.config.update(TESTING=True)
         return app.test_client()
+
+    def test_check_endpoint_reports_blocking_error(self, client):
+        """Số pha sai: /api/check phải nói rõ lỗi chặn, khớp với lý do /api/render từ chối."""
+        body = client.post("/api/check", json={
+            "bien_ban_49_mba_3p": {"so_pha": "01", "to_dau_day": "I/I0"}}).get_json()
+        assert body["ok"] is True
+        errs = [c for c in body["checks"] if c["level"] == "error"]
+        assert errs and errs[0]["form"] == "49"
+        assert "Số pha" in errs[0]["message"]
+        # không lặp lại cùng một chỗ hai lần
+        assert len([c for c in body["checks"] if c["where"].endswith(".so_pha")]) == 1
 
     def test_check_endpoint_rules_only(self, client, data):
         from bienban.vision import normalize_ai_result
@@ -1520,6 +1572,87 @@ class TestModelDrift:
         body = client.get("/api/ai/models", headers={"X-Gemini-Key": "k"}).get_json()
         assert body["ok"] and body["default"] == "gemini-3.8-flash"
         assert body["models"][0] == "gemini-3.8-flash"
+
+
+class TestBlankFieldsDoNotBlock:
+    """Ô trống chỉ là cảnh báo — vẫn sinh Word và xem trước được (yêu cầu người dùng)."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def thin(self):
+        """Dữ liệu mẫu 45 thiếu cả số biên bản lẫn thông tin chung."""
+        from bienban import vision
+
+        return vision.normalize_ai_result({"reports": [{
+            "report_type": "45", "data": {
+                "hieu": "MITSUBISHI", "kieu": "NF-250", "loai": "MCCB",
+                "so_luong": "01", "so_cuc": "03", "ket_qua": "Đạt",
+                "rows": [{"stt": "1", "rtx_a": "273", "rtx_b": "275", "rtx_c": "279",
+                          "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"}]}}]})
+
+    def test_missing_so_bien_ban_is_warning_only(self, thin):
+        from bienban.validate import validate
+
+        probs = [p for p in validate(thin) if "so_bien_ban" in p.where]
+        assert probs, "phải nhắc người dùng thiếu số biên bản"
+        assert all(p.level == "warn" and not p.blocking for p in probs)
+
+    def test_only_structural_errors_block(self):
+        from bienban.validate import validate
+
+        # JSON rỗng hoàn toàn -> không có biên bản nào để in
+        probs = validate({"thong_tin_chung": {"ten_cong_trinh": "X"}})
+        assert any(p.blocking for p in probs)
+        # không phải object
+        assert validate("không phải dict")[0].blocking is True
+
+    def test_render_returns_word_and_preview(self, client, thin):
+        r = client.post("/api/render", json=thin)
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["files"] == ["45_BB45.docx"]
+        assert body["previews"]["45_BB45.docx"]
+        assert body["zip_url"]
+
+    def test_preview_shows_dash_for_blank(self, client, thin):
+        """Ô trống in ra dấu “-”, không phải chuỗi rỗng hay None."""
+        body = client.post("/api/render", json=thin).get_json()
+        html = body["previews"]["45_BB45.docx"]
+        assert "-" in html
+        assert "None" not in html
+
+    def test_validate_endpoint_ok_true_but_reports_warnings(self, client, thin):
+        body = client.post("/api/validate", json=thin).get_json()
+        assert body["ok"] is True
+        assert not [p for p in body["problems"] if p["blocking"]]
+        assert any("so_bien_ban" in p["where"] for p in body["problems"])
+
+    def test_problems_json_has_blocking_flag(self, client, thin):
+        body = client.post("/api/validate", json=thin).get_json()
+        assert all("blocking" in p for p in body["problems"])
+
+    def test_render_blocks_only_when_nothing_to_print(self, client):
+        r = client.post("/api/render", json={"thong_tin_chung": {"ten_cong_trinh": "X"}})
+        assert r.status_code == 400
+        body = r.get_json()
+        assert body["ok"] is False
+        assert any(p["blocking"] for p in body["problems"])
+
+    def test_cli_still_reports_problems(self, thin):
+        """CLI: không chặn in, nhưng vẫn liệt kê cảnh báo."""
+        from bienban.validate import validate
+
+        assert all(p.level in ("warn", "error") for p in validate(thin))
 
 
 class TestAiFallback:
@@ -2107,7 +2240,7 @@ class TestLauncher:
         rc = launcher.check()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Mẫu Word      : 5/5" in out
+        assert "Mẫu Word      : 6/6" in out
         assert "API key Gemini" in out
 
     def test_launcher_runs_server(self, launcher, monkeypatch):
@@ -2182,3 +2315,136 @@ class TestLauncher:
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
         assert ".env" in ignored
         assert (ROOT / ".env.example").exists()
+
+
+class TestForm49:
+    """Mẫu 49 – MÁY BIẾN ÁP 3 PHA (số liệu thật của biên bản 50921026/BB-TC)."""
+
+    DATA = {
+        "so_bien_ban": "50921026/BB-TC",
+        "hieu_may": "THIBIDI",
+        "cong_suat_dinh_muc": "1500",
+        "so_pha": "03",
+        "tan_so": "50",
+        "dien_ap_dinh_muc": "22/0,4",
+        "to_dau_day": "Dyn11",
+        "r_cach_dien_Mohm": {"rows": [
+            {"key": "cao_vo", "r60": "15300", "r15": "11300", "knt": "1,35"},
+            {"key": "cao_ha", "r60": "13700", "r15": "10200", "knt": "1,34"},
+            {"key": "ha_vo", "r60": "8200", "r15": "6200", "knt": "1,32"},
+        ]},
+        "r_cuon_day_1_chieu_ohm": {
+            "cao_ap": {
+                "ab": ["3,413", "3,332", "3,251", "3,169", "3,088"],
+                "bc": ["3,418", "3,336", "3,255", "3,174", "3,092"],
+                "ca": ["3,421", "3,339", "3,258", "3,177", "3,095"],
+            },
+            "ha_ap_mOhm": {"an": "0,885", "bn": "0,887", "cn": "0,889"},
+        },
+        "ti_so_bien_ap": {
+            "k1": ["57,759", "56,384", "55,019", "53,633", "52,258"],
+            "k2": ["57,763", "56,387", "55,012", "53,637", "52,261"],
+            "k3": ["57,764", "56,388", "55,013", "53,638", "52,262"],
+        },
+        "khong_tai": {"u0_V": "400", "i0_A": "5,19", "i0_pct": "0,24", "p0_W": "1210,3"},
+        "ngan_mach": {"uk_V": "1280,4", "uk_pct": "5,82", "ik_A": "39,36", "pk_W": "12423,3"},
+        "thu_dien_ap_tang_cao": {"cao_vo": "50", "ha_vo": "3", "thoi_gian": "1 phút"},
+    }
+
+    @pytest.fixture()
+    def out49(self, tmp_path):
+        from bienban.fill import render_all
+
+        data = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES, out_dir=tmp_path,
+                                    forms=["49"])
+        return paths, warnings
+
+    def _text(self, path):
+        d = docx.Document(str(path))
+        cells = [cell_text(tc) for t in d.tables for r in t.rows
+                 for tc in r._tr.findall(TC)]
+        return "\n".join(cells)
+
+    def test_renders_without_warnings(self, out49):
+        paths, warnings = out49
+        assert warnings == [], warnings
+        assert len(paths) == 1 and paths[0].name.startswith("49_")
+        assert paths[0].stat().st_size > 100_000
+
+    def test_table_shapes_are_three_phase(self, out49):
+        doc = docx.Document(str(out49[0][0]))
+        shapes = [(len(t.rows), len(t.columns)) for t in doc.tables]
+        # cách điện 4x4, R-DC 7x5 (2 hàng tiêu đề), tỉ số 6x4
+        assert (4, 4) in shapes
+        assert (7, 5) in shapes
+        assert (6, 4) in shapes
+
+    def test_values_land_in_the_right_cells(self, out49):
+        text = self._text(out49[0][0])
+        for must in ("Cao – Vỏ", "Cao – Hạ", "Hạ – Vỏ", "15300", "13700", "8200",
+                     "3,413", "3,421", "3,095", "57,759", "52,258", "52,262",
+                     "0,885", "0,889",
+                     "1210,3", "12423,3"):
+            assert must in text, f"thiếu {must!r} trong bảng"
+
+    def test_never_emits_one_phase_rows(self, out49):
+        text = self._text(out49[0][0])
+        for forbidden in ("Hạ 1", "Hạ 2", "(Cao + Vỏ) – Hạ", "ha_1", "ha_2"):
+            assert forbidden not in text, f"mẫu 49 không được có {forbidden!r}"
+
+    def test_schema_uses_series_not_fixed_rows(self):
+        from bienban.schema import fields_of
+
+        names = {f["key"] for f in fields_of("49")}
+        for name in ("r_cuon_day_1_chieu_ohm.cao_ap.ab",
+                     "r_cuon_day_1_chieu_ohm.cao_ap.bc",
+                     "r_cuon_day_1_chieu_ohm.cao_ap.ca",
+                     "r_cuon_day_1_chieu_ohm.ha_ap_mOhm.an",
+                     "ti_so_bien_ap.k1", "ti_so_bien_ap.k2", "ti_so_bien_ap.k3"):
+            assert name in names, f"thiếu ô {name}"
+
+    def test_clean_sample_has_no_check_warnings(self):
+        from bienban.checks import check_rules
+
+        assert check_rules({"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}) == []
+
+    def test_so_pha_mismatch_is_reported(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["so_pha"] = "01"
+        bad["bien_ban_49_mba_3p"]["to_dau_day"] = "I/I0"
+        msgs = [w.message for w in check_rules(bad)]
+        assert any("Số pha" in m for m in msgs)
+        assert any("1 pha" in m for m in msgs)
+
+    def test_phase_outlier_detected(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["r_cuon_day_1_chieu_ohm"]["cao_ap"]["bc"][2] = "9,900"
+        assert any("AB/BC/CA" in w.message for w in check_rules(bad))
+
+    def test_ratio_outlier_detected(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["ti_so_bien_ap"]["k3"][4] = "39,262"
+        assert any("K1/K2/K3" in w.message for w in check_rules(bad))
+
+    def test_r60_below_r15_detected(self):
+        from bienban.checks import check_rules
+
+        bad = {"bien_ban_49_mba_3p": json.loads(json.dumps(self.DATA))}
+        bad["bien_ban_49_mba_3p"]["r_cach_dien_Mohm"]["rows"][0].update(
+            {"r60": "11300", "r15": "15300"})
+        assert any("R60" in w.message and "R15" in w.message for w in check_rules(bad))
+
+    def test_blank_49_does_not_block_generation(self, tmp_path):
+        paths, warnings = render_all({"bien_ban_49_mba_3p": {}},
+                                     templates_dir=TEMPLATES, out_dir=tmp_path,
+                                     forms=["49"])
+        assert len(paths) == 1
+        assert paths[0].exists()
+        assert all(w.level != "error" for w in warnings)

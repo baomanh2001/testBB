@@ -77,8 +77,11 @@ def cmd_check(args) -> int:
         return 0
     print("Phát hiện vấn đề:")
     for p in problems:
-        print(f"  - {p.level}: {p.where}: {p.message}")
-    return 2 if any(p.level == "error" for p in problems) else 1
+        mark = "LỖI " if p.blocking else "cảnh báo"
+        print(f"  - {mark}: {p.where}: {p.message}")
+    if not any(p.blocking for p in problems):
+        print("→ Vẫn sinh biên bản được; ô trống sẽ in dấu “-”.")
+    return 2 if any(p.blocking for p in problems) else 1
 
 
 def cmd_template(args) -> int:
