@@ -526,10 +526,13 @@ class TestVision:
             parse_json_loose("không có json")
 
     def test_retired_model_remapped(self):
+        """Tên đã khai tử → bỏ trống để tool tự dò model mới (không ghim cứng)."""
         from bienban.vision import _wire_model
 
-        assert _wire_model("gemini-1.5-flash") == "gemini-2.5-flash"
-        assert _wire_model("models/gemini-2.5-pro") == "gemini-2.5-pro"
+        assert _wire_model("gemini-1.5-flash") == ""
+        assert _wire_model("gemini-3.5-flash") == ""
+        assert _wire_model("models/gemini-3.8-flash") == "gemini-3.8-flash"
+        assert _wire_model("gemini-3.1-pro-preview") == "gemini-3.1-pro-preview"
 
     def test_missing_key_message(self, monkeypatch):
         from bienban import vision
@@ -1267,6 +1270,258 @@ class TestCheckEndpoint:
         assert _LAST_IMAGES["blobs"]
 
 
+class TestModelDrift:
+    """Google khai tử model liên tục (404 "no longer available") → tool tự dò."""
+
+    MODELS = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-flash-preview",
+              "gemini-3.1-pro-preview", "gemini-2.5-flash"]
+    OK = {"candidates": [{"content": {"parts": [{"text": '{"ok": 1}'}]}}]}
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def api(self, monkeypatch):
+        """Giả lập Google ở tầng urlopen để mã phân loại lỗi thật được chạy."""
+        import io
+        import urllib.error
+        import urllib.request
+
+        from bienban import vision
+
+        state = {"calls": [], "dead": {}, "models": list(self.MODELS)}
+        vision.AUTO_MODEL_CACHE.clear()
+
+        class Resp:
+            def __init__(self, obj):
+                self._b = json.dumps(obj).encode()
+
+            def read(self):
+                return self._b
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "/models?" in url:
+                return Resp({"models": [{"name": "models/" + m,
+                                         "supportedGenerationMethods": ["generateContent"]}
+                                        for m in state["models"]]})
+            model = url.split("/models/")[1].split(":")[0]
+            state["calls"].append(model)
+            if model in state["dead"]:
+                msg = (f"This model models/{model} is no longer available to new users. "
+                       f"Please update your code to use models/{state['dead'][model]}")
+                raise urllib.error.HTTPError(
+                    url, 404, "Not Found", {},
+                    io.BytesIO(json.dumps({"error": {"message": msg}}).encode()))
+            return Resp(self.OK)
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        return state
+
+    def test_ranking_prefers_newest_stable_flash(self, api):
+        from bienban.vision import list_models
+
+        models = list_models("k")
+        assert models[0] == "gemini-3.8-flash"
+        assert models.index("gemini-3.6-flash") < models.index("gemini-2.5-flash")
+        assert models.index("gemini-3-flash-preview") < models.index("gemini-2.5-flash")
+
+    def test_ranking_skips_specialised_models(self, api):
+        from bienban.vision import list_models
+
+        api["models"] += ["gemini-3.1-flash-image", "gemini-3.1-flash-tts-preview",
+                          "gemini-3.5-live-translate-preview", "gemini-omni-1.1-flash"]
+        models = list_models("k")
+        assert models[0] == "gemini-3.8-flash"
+        for bad in ("image", "tts", "live", "omni"):
+            assert all(bad not in models[0] for _ in [0])
+
+    def test_auto_model_uses_newest(self, api):
+        from bienban.vision import auto_model
+
+        assert auto_model("k") == "gemini-3.8-flash"
+
+    def test_auto_model_cached(self, api, monkeypatch):
+        import urllib.request
+
+        from bienban import vision
+
+        vision.auto_model("k")
+        list_calls = []
+
+        def boom(url, **kw):
+            list_calls.append(url)
+            raise AssertionError("không được gọi lại /models")
+
+        monkeypatch.setattr(urllib.request, "urlopen", boom)
+        assert vision.auto_model("k") == "gemini-3.8-flash"
+        assert not list_calls
+
+    def test_auto_model_falls_back_when_offline(self, monkeypatch):
+        from bienban import vision
+
+        def boom(url, **kw):
+            raise urllib.error.URLError("offline")
+
+        import urllib.error
+
+        monkeypatch.setattr(urllib.request, "urlopen", boom)
+        vision.AUTO_MODEL_CACHE.clear()
+        assert vision.auto_model("k") == vision.SAFE_MODEL
+
+    def test_404_switches_model_not_fatal(self, api):
+        """Đây chính là lỗi người dùng gặp: 404 "no longer available"."""
+        from bienban.vision import call_gemini
+
+        api["dead"] = {"gemini-2.5-pro": "gemini-3.1-pro-preview"}
+        seen = []
+        out = call_gemini([b"\xff\xd8\xffx"], key="k", model="gemini-2.5-pro",
+                          fallbacks=["gemini-3.6-flash"],
+                          on_try=lambda i, m, slot, exc: seen.append((m, getattr(exc, "status", 0))))
+        assert out == {"ok": 1}
+        assert seen[0] == ("gemini-2.5-pro", 404)
+        assert api["calls"] == ["gemini-2.5-pro", "gemini-3.6-flash"]
+
+    def test_dead_model_retried_with_freshly_detected(self, api):
+        """Cả chuỗi đều chết → tự dò lại model mới rồi thử lần cuối."""
+        from bienban.vision import call_gemini
+
+        api["dead"] = {"gemini-2.5-pro": "gemini-3.8-flash",
+                       "gemini-2.5-flash": "gemini-3.8-flash"}
+        out = call_gemini([b"\xff\xd8\xffx"], key="k", model="gemini-2.5-pro",
+                          fallbacks=["gemini-2.5-flash"])
+        assert out == {"ok": 1}
+        assert api["calls"][-1] == "gemini-3.8-flash"
+
+    def test_no_model_given_auto_detects(self, api):
+        from bienban.vision import call_gemini
+
+        assert call_gemini([b"\xff\xd8\xffx"], key="k") == {"ok": 1}
+        assert api["calls"] == ["gemini-3.8-flash"]
+
+    def test_missing_model_does_not_explode(self, api):
+        """DEFAULT_MODEL rỗng + không truyền model → vẫn phải chạy."""
+        from bienban import vision
+
+        assert vision.DEFAULT_MODEL == "" or isinstance(vision.DEFAULT_MODEL, str)
+        call = vision.call_gemini
+        assert call([b"\xff\xd8\xffx"], key="k", model="") == {"ok": 1}
+
+    def test_gemini3_gets_thinking_config(self, api, monkeypatch):
+        import urllib.request
+
+        from bienban import vision
+
+        seen = {}
+        real = urllib.request.urlopen
+
+        def capture(req, timeout=None):
+            body = getattr(req, "data", None)
+            if body:
+                payload = json.loads(body.decode())
+                if "generationConfig" in payload:
+                    seen.update(payload["generationConfig"])
+            return real(req, timeout=timeout)
+
+        monkeypatch.setattr(urllib.request, "urlopen", capture)
+        vision.call_gemini([b"\xff\xd8\xffx"], key="k", model="gemini-3.8-flash")
+        assert seen["thinkingConfig"] == {"thinkingLevel": "low"}
+        assert seen["maxOutputTokens"] >= 32768
+
+    def test_gemini25_has_no_thinking_config(self, api, monkeypatch):
+        import urllib.request
+
+        from bienban import vision
+
+        seen = {}
+        real = urllib.request.urlopen
+
+        def capture(req, timeout=None):
+            body = getattr(req, "data", None)
+            if body:
+                payload = json.loads(body.decode())
+                if "generationConfig" in payload:
+                    seen.update(payload["generationConfig"])
+            return real(req, timeout=timeout)
+
+        monkeypatch.setattr(urllib.request, "urlopen", capture)
+        vision.call_gemini([b"\xff\xd8\xffx"], key="k", model="gemini-2.5-flash")
+        assert "thinkingConfig" not in seen
+
+    def test_max_tokens_message_when_truncated(self, api, monkeypatch):
+        """JSON bị cắt vì thinking → báo rõ, không thử model khác."""
+        import urllib.request
+
+        from bienban import vision
+
+        real = urllib.request.urlopen
+
+        def cut(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "/models?" in url:
+                return real(req, timeout=timeout)
+            raise AssertionError("không được thử model khác")
+
+        class Resp:
+            def read(self):
+                return json.dumps({"candidates": [{"finishReason": "MAX_TOKENS",
+                                                   "content": {"parts": []}}]}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(urllib.request, "urlopen",
+                            lambda req, timeout=None: (
+                                real(req, timeout=timeout)
+                                if "/models?" in getattr(req, "full_url", "") else Resp()))
+        with pytest.raises(vision.GeminiFatal) as err:
+            vision.call_gemini([b"\xff\xd8\xffx"], key="k", model="gemini-3.8-flash")
+        assert "MAX_TOKENS" in str(err.value) and "token" in str(err.value)
+
+    def test_api_models_reports_real_default(self, client, monkeypatch):
+        """Dropdown phải nhận đúng model mới nhất, không phải tên đã chết."""
+        import urllib.request
+
+        from bienban import vision
+
+        class Resp:
+            def read(self):
+                return json.dumps({"models": [
+                    {"name": "models/gemini-2.5-flash",
+                     "supportedGenerationMethods": ["generateContent"]},
+                    {"name": "models/gemini-3.8-flash",
+                     "supportedGenerationMethods": ["generateContent"]},
+                ]}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        vision.AUTO_MODEL_CACHE.clear()
+        monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: Resp())
+        body = client.get("/api/ai/models", headers={"X-Gemini-Key": "k"}).get_json()
+        assert body["ok"] and body["default"] == "gemini-3.8-flash"
+        assert body["models"][0] == "gemini-3.8-flash"
+
+
 class TestAiFallback:
     """Chuỗi AI dự phòng: model chính → model khác → key dự phòng (đều Gemini)."""
 
@@ -1366,7 +1621,8 @@ class TestAiFallback:
         with pytest.raises(GeminiError) as exc:
             call_gemini([b"\xff\xd8\xffx"], key="K1", model="gemini-2.5-flash",
                         fallbacks=["gemini-2.5-pro"], alt_keys=["K2"])
-        assert "phương án" in str(exc.value)
+        assert "Không gọi được model nào" in str(exc.value)
+        assert "429" in str(exc.value) or "bận" in str(exc.value)
 
     def test_on_try_reports_each_switch(self, calls):
         from bienban.vision import call_gemini

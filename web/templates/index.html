@@ -208,7 +208,8 @@
 const SCHEMA = {{ schema|tojson }};
 const SAMPLE = {{ sample|tojson }};
 const CSS = {{ css|tojson }};
-const DEFAULT_MODEL = {{ default_model|tojson }};
+// "" = không ghim model: mở trang sẽ tự hỏi Google model mới nhất cho key này
+const DEFAULT_MODEL = {{ (default_model or "")|tojson }};
 const MAX_IMAGES = {{ max_images }};
 let ENV_KEY = false;
 
@@ -1132,7 +1133,8 @@ async function recognizeGroups(){
       const fd = new FormData();
       g.idx.forEach(i => { fd.append("images", IMAGES[i].file, IMAGES[i].file.name || `anh${i}.jpg`);
                            IMAGES[i].status = "đang đọc…"; });
-      fd.append("model", $("model").value || DEFAULT_MODEL);
+      const mSel = $("model").value || DEFAULT_MODEL;
+      if(mSel) fd.append("model", mSel);
       if(g.form) fd.append("forms", g.form);
       renderThumbs();
       let d = {};
@@ -1206,34 +1208,60 @@ const KEY_STORE = "bienban.gemini.key";
 const MODEL_STORE = "bienban.gemini.model";
 $("key").value = localStorage.getItem(KEY_STORE) || "";
 $("key").oninput = () => localStorage.setItem(KEY_STORE, $("key").value.trim());
-$("model").innerHTML = `<option>${esc(DEFAULT_MODEL)}</option>`;
+const AUTO_LABEL = "⟳ Tự dò model mới nhất";
+function modelPlaceholder(){
+  $("model").innerHTML = `<option value="">${esc(AUTO_LABEL)}</option>`;
+}
+if(DEFAULT_MODEL) $("model").innerHTML = `<option>${esc(DEFAULT_MODEL)}</option>`;
+else modelPlaceholder();
 $("model").onchange = () => localStorage.setItem(MODEL_STORE, $("model").value);
 
-async function loadModels(){
+async function loadModels(opts){
+  const silent = !!(opts && opts.silent);
   const key = ($("key").value || "").trim();
   if(!key && !ENV_KEY){
-    setAiStatus("Chưa có API key. Dán key ở trên, hoặc chạy server với <code>GEMINI_API_KEY</code>.", "warn");
-    return;
+    if(!silent) setAiStatus("Chưa có API key. Dán key ở trên, hoặc chạy server với <code>GEMINI_API_KEY</code>.", "warn");
+    return false;
   }
   const btn = $("btnModels");
   btn.disabled = true; btn.textContent = "Đang lấy…";
   try{
     const r = await fetch("/api/ai/models", {headers: key ? {"X-Gemini-Key": key} : {}});
     const d = await r.json();
-    if(!d.ok){ setAiStatus(esc(d.error || "Không lấy được danh sách model"), "err"); return; }
+    if(!d.ok){
+      if(!silent) setAiStatus(esc(d.error || "Không lấy được danh sách model"), "err");
+      return false;
+    }
+    // ưu tiên: model người dùng đã chọn > model mặc định > model mới nhất
     const saved = localStorage.getItem(MODEL_STORE);
-    const sel = d.models.includes(saved) ? saved
-              : (d.models.includes(DEFAULT_MODEL) ? DEFAULT_MODEL : d.models[0]);
+    const sel = (saved && d.models.includes(saved)) ? saved
+              : (DEFAULT_MODEL && d.models.includes(DEFAULT_MODEL) ? DEFAULT_MODEL : d.models[0]);
     $("model").innerHTML = d.models.map(m =>
       `<option ${m===sel?"selected":""}>${esc(m)}</option>`).join("");
-    setAiStatus(`Đã lấy ${d.models.length} model khả dụng.`, "ok");
+    if(!silent) setAiStatus(`Đã lấy ${d.models.length} model khả dụng. Đang dùng <b>${esc(sel)}</b>.`, "ok");
+    return true;
   }catch(e){
-    setAiStatus("Không gọi được máy chủ: " + esc(e.message), "err");
+    if(!silent) setAiStatus("Không gọi được máy chủ: " + esc(e.message), "err");
+    return false;
   }finally{
     btn.disabled = false; btn.textContent = "↻ Danh sách model";
   }
 }
 $("btnModels").onclick = loadModels;
+/* Mở trang / dán key xong: hỏi Google model mới nhất mà key dùng được. */
+let AUTO_PICKED = false;
+async function autoPickModel(force){
+  if(AUTO_PICKED && !force) return;
+  const key = ($("key").value || "").trim();
+  if(!key && !ENV_KEY) return;
+  const ok = await loadModels({silent: true});
+  if(ok) AUTO_PICKED = true;
+}
+let _keyTimer = null;
+$("key").addEventListener("input", () => {
+  clearTimeout(_keyTimer);
+  _keyTimer = setTimeout(() => autoPickModel(true), 700);   // dán key xong là dò luôn
+});
 
 $("btnPrompt").onclick = async () => {
   try{
@@ -1261,7 +1289,8 @@ $("btnRecognize").onclick = async () => {
   }
   const fd = new FormData();
   IMAGES.forEach((im, i) => { fd.append("images", im.file, im.file.name || `anh${i}.jpg`); im.status = "đang đọc…"; });
-  fd.append("model", $("model").value || DEFAULT_MODEL);
+  const mSel = $("model").value || DEFAULT_MODEL;
+  if(mSel) fd.append("model", mSel);      // không chọn = để máy chủ tự dò
   renderThumbs();
   const btn = $("btnRecognize");
   btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Đang đọc ảnh…`;
@@ -1575,6 +1604,9 @@ fetch("/api/ai/status").then(r => r.json()).then(s => {
     setAiStatus("Dán API key Gemini ở trên để bật nhận dạng ảnh — hoặc đặt biến môi trường " +
                 "<code>GEMINI_API_KEY</code> khi chạy server.", "info");
   }
+  // Tự dò model ngay khi mở trang: Google khai tử model liên tục nên không
+  // bao giờ ghim cứng; im lặng để không làm phiền người dùng.
+  return autoPickModel();
 }).catch(() => {
   $("aiChipText").textContent = "Không rõ trạng thái";
   setAiStatus("Chưa kiểm tra được trạng thái API key.", "warn");

@@ -74,7 +74,11 @@ DEFAULT_CONFIG = {
     },
     # Chuỗi AI dự phòng: model chính -> model khác -> key dự phòng (đều của Gemini)
     "ai": {
-        "fallback_models": ["gemini-2.5-pro", "gemini-2.0-flash"],
+        # Để trống = tự dò model mới nhất theo key, không bao giờ ghim model đã chết.
+        "default_model": "",
+        # Chỉ dùng khi model tự dò không chạy được; tool vẫn tự dò lại nếu Google khai tử.
+        "fallback_models": ["gemini-3.6-flash", "gemini-3-flash-preview",
+                            "gemini-2.5-flash"],
         "fallback_keys": [],          # có thể điền key thứ hai từ config.json
     },
 }

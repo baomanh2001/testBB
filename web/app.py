@@ -191,9 +191,9 @@ def api_ai_models():
     except vision.GeminiError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     if not models:
-        models = [vision.DEFAULT_MODEL]
+        models = [vision.auto_model(_gemini_key())]
     return jsonify({"ok": True, "models": models,
-                    "default": vision.DEFAULT_MODEL, "selected": vision.DEFAULT_MODEL})
+                    "default": models[0], "selected": models[0]})
 
 
 # Ảnh của lần nhận dạng gần nhất, giữ trong RAM (không ghi ra đĩa) để bước
@@ -297,7 +297,10 @@ def api_ai_recognize():
 
     forms = [f for f in (request.form.get("forms") or "").split(",") if f]
     forms = [f for f in forms if f in TEMPLATES] or None
-    model = request.form.get("model") or vision.DEFAULT_MODEL
+    cfg0 = load_config().get("ai") or {}
+    model = ((request.form.get("model") or "").strip()
+             or (cfg0.get("default_model") or "").strip()
+             or None)                                   # None = tự dò theo key
 
     try:
         cfg_ai = load_config().get("ai") or {}
