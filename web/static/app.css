@@ -325,3 +325,35 @@ input.flash,select.flash,textarea.flash{animation:flashField 1.6s ease-out}
   60%{box-shadow:0 0 0 6px rgba(216,31,38,0);background:#fff}
   100%{box-shadow:none;background:#fff}
 }
+
+/* ---- thumbnail bấm được + lightbox ---- */
+.thumb .view{padding:0;border:0;background:none;cursor:zoom-in;display:block;width:100%}
+.thumb .view img{display:block;width:100%;height:100%;object-fit:cover;border-radius:8px}
+.thumb .view:hover img{opacity:.86}
+body.lb-open{overflow:hidden}
+.lightbox{position:fixed;inset:0;z-index:10000;display:grid;place-items:center}
+.lightbox[hidden]{display:none}
+.lb-backdrop{position:absolute;inset:0;background:rgba(12,10,30,.86);backdrop-filter:blur(2px)}
+.lb-panel{position:relative;display:flex;flex-direction:column;max-width:min(96vw,1100px);
+  max-height:94vh;width:100%;gap:8px}
+.lb-bar{display:flex;align-items:center;gap:10px;color:#fff;font-size:14px;padding:0 6px}
+.lb-bar b{font-weight:700}
+.lb-tag{background:rgba(255,255,255,.16);padding:3px 9px;border-radius:999px;font-size:12.5px}
+.lb-zoom{opacity:.75;font-variant-numeric:tabular-nums}
+.lb-bar button{margin-left:auto;width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.35);
+  background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:15px}
+.lb-stage{position:relative;flex:1;display:grid;place-items:center;overflow:hidden;
+  background:#0008;border-radius:12px;min-height:200px}
+.lb-stage img{max-width:100%;max-height:74vh;transform-origin:center center;
+  transition:transform .16s ease-out;user-select:none}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:64px;border:0;
+  background:rgba(255,255,255,.14);color:#fff;font-size:30px;line-height:1;cursor:pointer;border-radius:10px}
+.lb-nav.prev{left:8px} .lb-nav.next{right:8px}
+.lb-nav:disabled{opacity:.25;cursor:default}
+.lb-nav:not(:disabled):hover{background:rgba(255,255,255,.26)}
+.lb-tools{display:flex;align-items:center;gap:8px;padding:0 6px}
+.lb-tools button{min-width:38px;height:34px;padding:0 11px;border-radius:9px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:13.5px}
+.lb-tools button:hover{background:rgba(255,255,255,.24)}
+.lb-name{color:#fff;opacity:.6;font-size:12px;margin-left:auto;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:40%}

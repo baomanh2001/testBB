@@ -1267,6 +1267,65 @@ class TestCheckEndpoint:
         assert _LAST_IMAGES["blobs"]
 
 
+class TestImageReview:
+    """Giữ ảnh qua F5 (IndexedDB) + lightbox xem lại ảnh đã tải."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def page(self, client):
+        return client.get("/").get_data(as_text=True)
+
+    def test_lightbox_container_and_hooks(self, page):
+        assert 'id="lightbox"' in page
+        for hook in ("function lightboxOpen", "function lightboxClose",
+                     "function drawLightbox", "data-lb-zoom-in", "data-lb-rot",
+                     "data-lb-prev", "data-lb-next"):
+            assert hook in page, hook
+
+    def test_images_persist_across_reload(self, page):
+        # IndexedDB, không phải localStorage: ảnh chụp điện thoại vài MB vẫn lưu được
+        assert 'indexedDB.open' in page
+        for fn in ("idbPut", "idbAll", "idbDelete", "idbClear", "restoreImages"):
+            assert f"function {fn}" in page or f"async function {fn}" in page, fn
+        assert "restoreImages()" in page.split("khởi động")[-1]
+
+    def test_thumb_opens_lightbox(self, page):
+        assert 'data-view="${i}"' in page
+        assert 'data-view=' in page and "lightboxOpen(Number(b.dataset.view))" in page
+
+    def test_image_label_points_to_form(self, page):
+        """Ảnh phải ghi rõ thuộc biên bản nào: “ảnh 3 → biên bản 45”."""
+        assert "function imageFormLabel" in page
+        assert "biên bản " in page
+
+    def test_keyboard_shortcuts_in_lightbox(self, page):
+        tail = page.split("khởi động")[-1]
+        for key in ("Escape", "ArrowLeft", "ArrowRight"):
+            assert key in tail, key
+
+    def test_rotation_and_zoom_steps(self, page):
+        assert "VIEW.rot = (VIEW.rot + 90) % 360" in page
+        assert "Math.min(6, VIEW.zoom * 1.25)" in page
+
+    def test_css_for_lightbox(self, client):
+        css = client.get("/static/app.css").get_data(as_text=True)
+        for sel in (".lightbox", ".lb-stage", ".lb-nav", ".lb-tools", ".thumb .view"):
+            assert sel in css, sel
+
+    def test_delete_removes_from_store(self, page):
+        assert "idbDelete(im.dbId)" in page
+        assert "idbClear()" in page
+
+
 class TestFreeTextSelects:
     """Mọi dropdown (ô đơn + ô trong bảng) phải cho nhập giá trị ngoài danh sách."""
 

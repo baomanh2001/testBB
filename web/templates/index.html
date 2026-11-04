@@ -54,6 +54,7 @@
           <input type="file" id="file" accept="image/*" multiple hidden />
         </div>
         <div class="thumbs" id="thumbs"></div>
+        <div class="lightbox" id="lightbox" hidden></div>
         <div class="row tight" id="imgActions" style="display:none">
           <button class="ghost small" id="btnClear">Xoá hết ảnh</button>
         </div>
@@ -750,26 +751,191 @@ function markDirty(){
   }
 }
 
+/* ---------------- lưu ảnh qua F5 + lightbox ---------------- */
+/* Ảnh giữ trong IndexedDB (dung lượng lớn hơn localStorage rất nhiều).
+   Chỉ lưu Blob gốc, không lưu URL blob — URL tạo lại khi mở trang. */
+const IMG_DB = "bienban-images";
+const IMG_STORE = "photos";
+function idb(){
+  return new Promise((resolve, reject) => {
+    if(!window.indexedDB) return reject(new Error("no-indexeddb"));
+    const req = indexedDB.open(IMG_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if(!db.objectStoreNames.contains(IMG_STORE))
+        db.createObjectStore(IMG_STORE, {keyPath: "id", autoIncrement: true});
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbPut(file, status){
+  try{
+    const db = await idb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(IMG_STORE, "readwrite");
+      const add = tx.objectStore(IMG_STORE).add({blob: file, name: file.name,
+                                                 type: file.type, status: status || ""});
+      add.onsuccess = () => res(add.result);
+      add.onerror = () => rej(add.error);
+    });
+  }catch(e){ return null; }
+}
+async function idbAll(){
+  try{
+    const db = await idb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(IMG_STORE, "readonly");
+      const all = tx.objectStore(IMG_STORE).getAll();
+      all.onsuccess = () => res(all.result || []);
+      all.onerror = () => rej(all.error);
+    });
+  }catch(e){ return []; }
+}
+async function idbDelete(id){
+  if(id == null) return;
+  try{
+    const db = await idb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IMG_STORE, "readwrite");
+      const del = tx.objectStore(IMG_STORE).delete(id);
+      del.onsuccess = () => res(); del.onerror = () => rej(del.error);
+    });
+  }catch(e){}
+}
+async function idbClear(){
+  try{
+    const db = await idb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IMG_STORE, "readwrite");
+      const cl = tx.objectStore(IMG_STORE).clear();
+      cl.onsuccess = () => res(); cl.onerror = () => rej(cl.error);
+    });
+  }catch(e){}
+}
+/* Nạp lại ảnh đã lưu (sau khi F5) — im lặng nếu không có. */
+async function restoreImages(){
+  const rows = await idbAll();
+  if(!rows.length) return 0;
+  const room = Math.max(0, MAX_IMAGES - IMAGES.length);
+  for(const r of rows.slice(0, room)){
+    const blob = r.blob;
+    const file = blob instanceof File ? blob : new File([blob], r.name || `anh-${r.id}.jpg`,
+                                                        {type: r.type || "image/jpeg"});
+    IMAGES.push({file, url: URL.createObjectURL(file), status: r.status || "", dbId: r.id});
+  }
+  renderThumbs();
+  return Math.min(rows.length, room);
+}
+
+/* ---------------- lightbox: xem lại ảnh đã tải ---------------- */
+const VIEW = {i: 0, zoom: 1, rot: 0};
+function lightboxOpen(i){
+  if(!IMAGES.length) return;
+  VIEW.i = Math.max(0, Math.min(IMAGES.length - 1, i));
+  VIEW.zoom = 1; VIEW.rot = 0;
+  const box = $("lightbox");
+  box.hidden = false;
+  document.body.classList.add("lb-open");
+  drawLightbox();
+  const btn = box.querySelector("[data-lb-close]");
+  if(btn) btn.focus();
+}
+function lightboxClose(){
+  const box = $("lightbox");
+  box.hidden = true;
+  document.body.classList.remove("lb-open");
+}
+/* Nhãn "ảnh N → biên bản MM" để biết ảnh nào thuộc tờ nào. */
+function imageFormLabel(i){
+  const src = (DATA && DATA._ai && DATA._ai.sources) || {};
+  const hit = Object.keys(src).find(k => (src[k] || []).includes(i));
+  if(!hit) return "";
+  const mm = (hit.match(/(\d\d)/) || [])[1] || "";
+  return mm ? `biên bản ${mm}` : "";
+}
+function drawLightbox(){
+  const box = $("lightbox");
+  const im = IMAGES[VIEW.i];
+  if(!im){ lightboxClose(); return; }
+  const tag = imageFormLabel(VIEW.i);
+  box.innerHTML = `
+    <div class="lb-backdrop" data-lb-close></div>
+    <div class="lb-panel" role="dialog" aria-modal="true" aria-label="Xem ảnh ${VIEW.i}">
+      <div class="lb-bar">
+        <b>Ảnh ${VIEW.i + 1}/${IMAGES.length}</b>
+        ${tag ? `<span class="lb-tag">→ ${esc(tag)}</span>` : ""}
+        <span class="lb-zoom">${Math.round(VIEW.zoom * 100)}%</span>
+        <button data-lb-close title="Đóng (Esc)" aria-label="Đóng">✕</button>
+      </div>
+      <div class="lb-stage">
+        <button class="lb-nav prev" data-lb-prev aria-label="Ảnh trước (←)" ${VIEW.i === 0 ? "disabled" : ""}>‹</button>
+        <img src="${im.url}" alt="Ảnh ${VIEW.i + 1}"
+             style="transform:scale(${VIEW.zoom}) rotate(${VIEW.rot}deg)" data-lb-img />
+        <button class="lb-nav next" data-lb-next aria-label="Ảnh sau (→)" ${VIEW.i === IMAGES.length - 1 ? "disabled" : ""}>›</button>
+      </div>
+      <div class="lb-tools">
+        <button data-lb-zoom-out title="Thu nhỏ (−)" aria-label="Thu nhỏ">−</button>
+        <button data-lb-zoom-in title="Phóng to (+)" aria-label="Phóng to">+</button>
+        <button data-lb-rot title="Xoay 90° (R)" aria-label="Xoay 90 độ">⟳ Xoay</button>
+        <button data-lb-reset title="Về mặc định (0)" aria-label="Đặt lại">↺</button>
+        <span class="lb-name">${esc(im.file && im.file.name || "")}</span>
+      </div>
+    </div>`;
+  box.querySelectorAll("[data-lb-close]").forEach(el => el.onclick = lightboxClose);
+  const img = box.querySelector("[data-lb-img]");
+  const redraw = () => {
+    img.style.transform = `scale(${VIEW.zoom}) rotate(${VIEW.rot}deg)`;
+    box.querySelector(".lb-zoom").textContent = Math.round(VIEW.zoom * 100) + "%";
+  };
+  const go = d => { VIEW.i = Math.max(0, Math.min(IMAGES.length - 1, VIEW.i + d)); VIEW.zoom = 1; VIEW.rot = 0; drawLightbox(); };
+  if(box.querySelector("[data-lb-prev]")) box.querySelector("[data-lb-prev]").onclick = () => go(-1);
+  if(box.querySelector("[data-lb-next]")) box.querySelector("[data-lb-next]").onclick = () => go(1);
+  box.querySelector("[data-lb-zoom-in]").onclick = () => { VIEW.zoom = Math.min(6, VIEW.zoom * 1.25); redraw(); };
+  box.querySelector("[data-lb-zoom-out]").onclick = () => { VIEW.zoom = Math.max(0.2, VIEW.zoom / 1.25); redraw(); };
+  box.querySelector("[data-lb-rot]").onclick = () => { VIEW.rot = (VIEW.rot + 90) % 360; redraw(); };
+  box.querySelector("[data-lb-reset]").onclick = () => { VIEW.zoom = 1; VIEW.rot = 0; redraw(); };
+  // lăn chuột để phóng to, bấm ảnh để đổi mức zoom
+  box.querySelector(".lb-stage").onwheel = e => {
+    e.preventDefault();
+    VIEW.zoom = Math.max(0.2, Math.min(6, VIEW.zoom * (e.deltaY < 0 ? 1.12 : 0.89)));
+    redraw();
+  };
+}
+
 /* ---------------- ảnh ---------------- */
 function renderThumbs(){
-  $("thumbs").innerHTML = IMAGES.map((im, i) => `
+  $("thumbs").innerHTML = IMAGES.map((im, i) => {
+    const tag = imageFormLabel(i);
+    return `
     <div class="thumb">
-      <img src="${im.url}" alt="Ảnh ${i}" />
-      <span class="idx">${i}</span>
-      <button class="x" data-rm="${i}" title="Bỏ ảnh ${i}" aria-label="Bỏ ảnh ${i}">✕</button>
-      <span class="st">${esc(im.status || "")}</span>
-    </div>`).join("");
+      <button class="view" data-view="${i}" title="Xem ảnh ${i + 1} (phóng to, xoay)"
+              aria-label="Xem ảnh ${i + 1}">
+        <img src="${im.url}" alt="Ảnh ${i + 1}" />
+      </button>
+      <span class="idx">${i + 1}</span>
+      <button class="x" data-rm="${i}" title="Bỏ ảnh ${i + 1}" aria-label="Bỏ ảnh ${i + 1}">✕</button>
+      <span class="st">${esc(im.status || "")}${tag ? " · " + esc(tag) : ""}</span>
+    </div>`;
+  }).join("");
   $("imgActions").style.display = IMAGES.length ? "flex" : "none";
   $("imgCount").textContent = IMAGES.length ? `${IMAGES.length} ảnh` : "chưa có ảnh";
   $("dropHint").textContent = IMAGES.length
     ? `Đã chọn ${IMAGES.length} ảnh — bấm để thêm ảnh khác`
     : `JPG/PNG, tối đa ${MAX_IMAGES} ảnh mỗi lần · chụp nhiều tờ một lúc cũng được`;
-  [...document.querySelectorAll("[data-rm]")].forEach(b => b.onclick = () => {
+  [...document.querySelectorAll("[data-rm]")].forEach(b => b.onclick = e => {
+    e.stopPropagation();
     const i = Number(b.dataset.rm);
-    URL.revokeObjectURL(IMAGES[i].url);
+    const im = IMAGES[i];
+    URL.revokeObjectURL(im.url);
+    idbDelete(im.dbId);                 // xoá luôn bản lưu để F5 không hiện lại
     IMAGES.splice(i, 1);
+    if(!$("lightbox").hidden){
+      if(!IMAGES.length) lightboxClose(); else { VIEW.i = Math.min(VIEW.i, IMAGES.length - 1); drawLightbox(); }
+    }
     renderThumbs();
   });
+  [...document.querySelectorAll("[data-view]")].forEach(b => b.onclick = () => lightboxOpen(Number(b.dataset.view)));
 }
 function addFiles(list){
   let skipped = 0;
@@ -779,7 +945,10 @@ function addFiles(list){
       setAiStatus(`Chỉ gửi tối đa ${MAX_IMAGES} ảnh một lần.`, "warn");
       break;
     }
-    IMAGES.push({file: f, url: URL.createObjectURL(f), status: ""});
+    const rec = {file: f, url: URL.createObjectURL(f), status: ""};
+    IMAGES.push(rec);
+    // lưu lại để F5 vẫn còn ảnh (không chặn giao diện nếu trình duyệt chặn IndexedDB)
+    idbPut(f, "").then(id => { if(id != null) rec.dbId = id; }).catch(() => {});
   }
   if(skipped) setAiStatus(`${skipped} file không phải ảnh đã bị bỏ qua.`, "warn");
   renderThumbs();
@@ -792,7 +961,8 @@ $("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
 ["dragleave","drop"].forEach(ev => $("drop").addEventListener(ev, e => {
   e.preventDefault(); $("drop").classList.remove("hot"); }));
 $("drop").addEventListener("drop", e => addFiles(e.dataTransfer.files));
-$("btnClear").onclick = () => { IMAGES.forEach(i => URL.revokeObjectURL(i.url)); IMAGES = []; renderThumbs(); };
+$("btnClear").onclick = () => {
+  idbClear(); IMAGES.forEach(i => URL.revokeObjectURL(i.url)); IMAGES = []; renderThumbs(); };
 
 /* ---------------- Gemini ---------------- */
 const KEY_STORE = "bienban.gemini.key";
@@ -1135,6 +1305,18 @@ showPreview = function(name){ currentPreview = name; return _showPreview(name); 
 
 /* ---------------- khởi động ---------------- */
 loadData(JSON.parse(SAMPLE)).then(() => offerDraftRestore()).catch(() => {});
+restoreImages().then(n => { if(n) toast(`Đã khôi phục ${n} ảnh đã tải trước đó`); });
+
+document.addEventListener("keydown", e => {
+  const box = $("lightbox");
+  if(!box || box.hidden) return;
+  if(e.key === "Escape"){ e.preventDefault(); lightboxClose(); }
+  else if(e.key === "ArrowLeft"){ e.preventDefault(); const p = box.querySelector("[data-lb-prev]"); if(p && !p.disabled) p.click(); }
+  else if(e.key === "ArrowRight"){ e.preventDefault(); const n = box.querySelector("[data-lb-next]"); if(n && !n.disabled) n.click(); }
+  else if((e.key || "").toLowerCase() === "r"){ e.preventDefault(); box.querySelector("[data-lb-rot]").click(); }
+  else if(e.key === "+" || e.key === "="){ e.preventDefault(); box.querySelector("[data-lb-zoom-in]").click(); }
+  else if(e.key === "-"){ e.preventDefault(); box.querySelector("[data-lb-zoom-out]").click(); }
+});
 // đóng trang / đổi tab: ghi nháp ngay, không đợi hẹn giờ
 window.addEventListener("beforeunload", () => { if(HIST.stack.length > 1) saveDraft(); });
 fetch("/api/ai/status").then(r => r.json()).then(s => {
