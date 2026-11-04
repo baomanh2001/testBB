@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Điền biên bản kiểm định 44–48</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#16213e; --panel2:#1b2a4a; --line:#2b3f66;
+    --text:#e8eefc; --muted:#94a7c8; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --err:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial,sans-serif;
+       background:radial-gradient(1200px 600px at 15% -10%,#1e3a5f 0%,var(--bg) 55%);
+       color:var(--text);min-height:100vh}
+  header{padding:28px 32px 12px}
+  h1{margin:0;font-size:24px;letter-spacing:.2px}
+  header p{margin:6px 0 0;color:var(--muted);font-size:14px}
+  main{display:grid;grid-template-columns:1.25fr .95fr;gap:20px;padding:18px 32px 40px}
+  @media (max-width:1000px){main{grid-template-columns:1fr}}
+  .card{background:linear-gradient(180deg,var(--panel) 0%,var(--panel2) 100%);
+        border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h2{margin:0 0 10px;font-size:15px;color:var(--accent);letter-spacing:.4px;text-transform:uppercase}
+  textarea{width:100%;height:52vh;min-height:340px;resize:vertical;border-radius:10px;
+           border:1px solid var(--line);background:#0c1424;color:#dbe7ff;padding:12px;
+           font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  button{cursor:pointer;border-radius:10px;border:1px solid var(--line);padding:10px 16px;
+         background:#132039;color:var(--text);font-size:13.5px;font-weight:600;transition:.15s}
+  button:hover{border-color:var(--accent);transform:translateY(-1px)}
+  button.primary{background:linear-gradient(90deg,#0284c7,#0ea5e9);border-color:transparent;color:#04121f}
+  button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  ul{list-style:none;margin:0;padding:0}
+  li.file{display:flex;justify-content:space-between;align-items:center;gap:10px;
+          padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#101b30}
+  li.file span{font-size:13px;word-break:break-all}
+  .badge{font-size:11px;padding:2px 8px;border-radius:999px;background:#1d3357;color:var(--muted)}
+  .msg{padding:10px 12px;border-radius:10px;font-size:13px;margin-bottom:8px;line-height:1.45}
+  .msg.ok{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35)}
+  .msg.warn{background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35)}
+  .msg.err{background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.35)}
+  .muted{color:var(--muted);font-size:12.5px;line-height:1.55}
+  .forms{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .forms div{font-size:12.5px;color:var(--muted)}
+  code{background:#0c1424;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Điền biên bản kiểm định thiết bị điện lực</h1>
+  <p>Mẫu 44 – MBA 1 pha · 45 – MCCB · 46 – LA · 47 – FCO · 48 – Điện trở nối đất</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1. Dữ liệu JSON</h2>
+    <textarea id="json" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="primary" id="btnRender">Sinh biên bản</button>
+      <button id="btnCheck">Kiểm tra JSON</button>
+      <button id="btnSample">Nạp dữ liệu mẫu</button>
+      <button id="btnDownload" disabled>Tải tất cả (.zip)</button>
+    </div>
+    <p class="muted" style="margin-top:10px">
+      Cần đúng cấu trúc <code>thong_tin_chung</code> + <code>bien_ban_44_mba</code> …
+      <code>bien_ban_48_tiep_dat</code>. Ngày tự chuẩn hoá về <code>dd/mm/yyyy</code>,
+      số đo về dấu phẩy thập phân.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>2. Kết quả</h2>
+    <div id="status"><p class="muted">Chưa có gì. Bấm “Sinh biên bản” để bắt đầu.</p></div>
+    <h2 style="margin-top:18px">Mẫu Word đang dùng</h2>
+    <div class="forms">
+      {% for f in forms %}
+      <div><span class="badge">{{ f.key }}</span> {{ f.title }} — <code>templates/{{ f.file }}</code></div>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+
+<script>
+const sample = {{ sample|tojson }};
+const $ = (id) => document.getElementById(id);
+$("json").value = sample;
+
+let lastData = null;
+
+function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+function renderProblems(list){
+  if(!list || !list.length) return "";
+  return list.map(p=>`<div class="msg ${p.level==='error'?'err':'warn'}">
+     <b>${p.level==='error'?'Lỗi':'Cảnh báo'}</b> · <code>${esc(p.where)}</code><br>${esc(p.message)}</div>`).join("");
+}
+
+async function post(url, body){
+  const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  return {status:r.status, data: await r.json()};
+}
+
+$("btnSample").onclick = () => { $("json").value = sample; };
+
+$("btnCheck").onclick = async () => {
+  let data;
+  try { data = JSON.parse($("json").value); }
+  catch(e){ $("status").innerHTML = `<div class="msg err">JSON sai cú pháp: ${esc(e.message)}</div>`; return; }
+  const {data:res} = await post("/api/validate", data);
+  $("status").innerHTML = renderProblems(res.problems) ||
+     `<div class="msg ok">JSON hợp lệ. Sẽ sinh ${res.forms.length} biên bản: ${res.forms.join(", ")}</div>`;
+};
+
+$("btnRender").onclick = async () => {
+  let data;
+  try { data = JSON.parse($("json").value); }
+  catch(e){ $("status").innerHTML = `<div class="msg err">JSON sai cú pháp: ${esc(e.message)}</div>`; return; }
+  $("status").innerHTML = `<p class="muted">Đang sinh biên bản…</p>`;
+  const {data:res} = await post("/api/render", data);
+  if(!res.ok){
+    $("status").innerHTML = renderProblems(res.problems) ||
+      `<div class="msg err">${esc(res.error||"Có lỗi xảy ra")}</div>`;
+    $("btnDownload").disabled = true;
+    return;
+  }
+  lastData = data;
+  $("btnDownload").disabled = false;
+  const files = res.files.map(f=>`<li class="file"><span>📄 ${esc(f)}</span>
+      <button onclick="downloadOne('${esc(f)}')">Tải</button></li>`).join("");
+  $("status").innerHTML = `<div class="msg ok">Đã sinh ${res.files.length} biên bản.</div>
+     <ul>${files}</ul>` + renderProblems(res.warnings);
+};
+
+async function downloadOne(name){
+  if(!lastData) return;
+  const r = await fetch("/api/download", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({data:lastData, name})});
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+
+$("btnDownload").onclick = async () => {
+  if(!lastData) return;
+  const r = await fetch("/api/download", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({data:lastData})});
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "bien-ban-kdm.zip"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+};
+</script>
+</body>
+</html>
