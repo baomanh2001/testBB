@@ -226,14 +226,19 @@ class TestValidate:
                    for p in validate(d))
 
     def test_bad_date(self, data):
+        """Ngày sai định dạng: cảnh báo, KHÔNG chặn in (in nguyên chữ đã nhập)."""
         d = json.loads(json.dumps(data))
         d["thong_tin_chung"]["ngay_kiem_dinh"] = "31/02/2026"
-        assert any(p.level == "error" for p in validate(d))
+        probs = [p for p in validate(d) if "ngay_kiem_dinh" in p.where]
+        assert probs and all(p.level == "warn" and not p.blocking for p in probs)
 
     def test_missing_insulation(self, data):
+        """Thiếu số liệu: cảnh báo để người dùng biết, nhưng vẫn sinh Word được."""
         d = json.loads(json.dumps(data))
         del d["bien_ban_44_mba"]["r_cach_dien_Mohm"]["ha1_ha2"]["r60"]
-        assert any(p.level == "error" and "ha1_ha2" in p.where for p in validate(d))
+        probs = [p for p in validate(d) if "ha1_ha2" in p.where]
+        assert probs
+        assert all(p.level == "warn" and not p.blocking for p in probs)
 
     def test_us_decimal_separator_warns(self, data):
         d = json.loads(json.dumps(data))
@@ -688,7 +693,8 @@ class TestAIEndpoints:
         assert len(render["files"]) == 2
         assert any(f.startswith("45_") for f in render["files"])
 
-    def test_render_refuses_incomplete_common(self, client):
+    def test_render_allows_incomplete_common(self, client):
+        """Thông tin chung còn trống vẫn phải sinh được Word để xem trước."""
         from bienban import vision
 
         data = vision.normalize_ai_result({"reports": [{
@@ -697,9 +703,12 @@ class TestAIEndpoints:
                 "ket_noi_trung_tinh": "Có", "loai_tiep_dat": "Làm việc",
                 "gia_tri_do_Ohm": "3,52", "thiet_bi_do": "KEW 4105DL"}}]})
         body = client.post("/api/render", json=data).get_json()
-        assert body["ok"] is False
-        missing = " ".join(p["where"] for p in body["problems"] if p["level"] == "error")
-        assert "thong_tin_chung.dia_chi" in missing
+        assert body["ok"] is True, body
+        assert body["files"] and body["previews"]
+        warned = " ".join(p["where"] for p in body["problems"] if not p["blocking"])
+        assert "thong_tin_chung.dia_chi" in warned
+        # không có lỗi chặn nào
+        assert not [p for p in body["problems"] if p["blocking"]]
 
     def test_recognize_nothing_found(self, client, monkeypatch):
         import io
@@ -1520,6 +1529,87 @@ class TestModelDrift:
         body = client.get("/api/ai/models", headers={"X-Gemini-Key": "k"}).get_json()
         assert body["ok"] and body["default"] == "gemini-3.8-flash"
         assert body["models"][0] == "gemini-3.8-flash"
+
+
+class TestBlankFieldsDoNotBlock:
+    """Ô trống chỉ là cảnh báo — vẫn sinh Word và xem trước được (yêu cầu người dùng)."""
+
+    @pytest.fixture()
+    def client(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from web.app import app
+
+        app.config.update(TESTING=True)
+        return app.test_client()
+
+    @pytest.fixture()
+    def thin(self):
+        """Dữ liệu mẫu 45 thiếu cả số biên bản lẫn thông tin chung."""
+        from bienban import vision
+
+        return vision.normalize_ai_result({"reports": [{
+            "report_type": "45", "data": {
+                "hieu": "MITSUBISHI", "kieu": "NF-250", "loai": "MCCB",
+                "so_luong": "01", "so_cuc": "03", "ket_qua": "Đạt",
+                "rows": [{"stt": "1", "rtx_a": "273", "rtx_b": "275", "rtx_c": "279",
+                          "utest": "3", "dong_cat": "5", "ket_qua": "Đạt"}]}}]})
+
+    def test_missing_so_bien_ban_is_warning_only(self, thin):
+        from bienban.validate import validate
+
+        probs = [p for p in validate(thin) if "so_bien_ban" in p.where]
+        assert probs, "phải nhắc người dùng thiếu số biên bản"
+        assert all(p.level == "warn" and not p.blocking for p in probs)
+
+    def test_only_structural_errors_block(self):
+        from bienban.validate import validate
+
+        # JSON rỗng hoàn toàn -> không có biên bản nào để in
+        probs = validate({"thong_tin_chung": {"ten_cong_trinh": "X"}})
+        assert any(p.blocking for p in probs)
+        # không phải object
+        assert validate("không phải dict")[0].blocking is True
+
+    def test_render_returns_word_and_preview(self, client, thin):
+        r = client.post("/api/render", json=thin)
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["files"] == ["45_BB45.docx"]
+        assert body["previews"]["45_BB45.docx"]
+        assert body["zip_url"]
+
+    def test_preview_shows_dash_for_blank(self, client, thin):
+        """Ô trống in ra dấu “-”, không phải chuỗi rỗng hay None."""
+        body = client.post("/api/render", json=thin).get_json()
+        html = body["previews"]["45_BB45.docx"]
+        assert "-" in html
+        assert "None" not in html
+
+    def test_validate_endpoint_ok_true_but_reports_warnings(self, client, thin):
+        body = client.post("/api/validate", json=thin).get_json()
+        assert body["ok"] is True
+        assert not [p for p in body["problems"] if p["blocking"]]
+        assert any("so_bien_ban" in p["where"] for p in body["problems"])
+
+    def test_problems_json_has_blocking_flag(self, client, thin):
+        body = client.post("/api/validate", json=thin).get_json()
+        assert all("blocking" in p for p in body["problems"])
+
+    def test_render_blocks_only_when_nothing_to_print(self, client):
+        r = client.post("/api/render", json={"thong_tin_chung": {"ten_cong_trinh": "X"}})
+        assert r.status_code == 400
+        body = r.get_json()
+        assert body["ok"] is False
+        assert any(p["blocking"] for p in body["problems"])
+
+    def test_cli_still_reports_problems(self, thin):
+        """CLI: không chặn in, nhưng vẫn liệt kê cảnh báo."""
+        from bienban.validate import validate
+
+        assert all(p.level in ("warn", "error") for p in validate(thin))
 
 
 class TestAiFallback:

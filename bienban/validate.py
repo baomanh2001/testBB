@@ -2,7 +2,14 @@
 
 Mục tiêu: phát hiện sớm lỗi thường gặp của bước trích xuất ảnh (OCR/LLM) —
 sai định dạng ngày, dấu thập phân kiểu Mỹ, thiếu số máy/số tem, thiếu dãy số
-liệu 5 nấc — để không sinh ra biên bản sai.
+liệu 5 nấc.
+
+**Ô trống chỉ là cảnh báo, không chặn in.** Người dùng cố ý để trống (in bản
+nháp, bổ sung tay sau khi in) nên tool vẫn sinh Word bình thường; ô trống in ra
+dấu ``-``. Chỉ hai trường hợp mới là lỗi chặn in:
+
+* JSON gốc không phải object;
+* không có khối biên bản nào (``bien_ban_44..48``) để in.
 """
 
 from __future__ import annotations
@@ -16,9 +23,12 @@ from .normalize import digits_only, norm_date
 
 @dataclass
 class Problem:
-    level: str  # "error" | "warn"
+    level: str      # "error" | "warn"
     where: str
     message: str
+    #: True = chặn sinh biên bản; False (mặc định) = chỉ cảnh báo cho người dùng.
+    #: Ô trống không bao giờ chặn: in ra "-" và vẫn cho xem trước Word.
+    blocking: bool = False
 
 
 DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
@@ -95,7 +105,7 @@ REQUIRED_FIELDS = {
 def _check_date(value, where: str, problems: list[Problem], *, required=True):
     if not value:
         if required:
-            problems.append(Problem("error", where, "Thiếu ngày"))
+            problems.append(Problem("warn", where, "Thiếu ngày – sẽ in dấu “-”"))
         return
     normalized = norm_date(value)
     valid = bool(DATE_RE.match(normalized))
@@ -106,7 +116,8 @@ def _check_date(value, where: str, problems: list[Problem], *, required=True):
         except ValueError:
             valid = False
     if not valid:
-        problems.append(Problem("error", where, f"Ngày không hợp lệ: {value!r}"))
+        problems.append(Problem("warn", where,
+                                f"Ngày không hợp lệ: {value!r} – sẽ giữ nguyên chữ đã nhập"))
     elif normalized != str(value).strip():
         problems.append(
             Problem("warn", where, f"Ngày sẽ được chuẩn hoá: {value!r} → {normalized!r}")
@@ -115,7 +126,7 @@ def _check_date(value, where: str, problems: list[Problem], *, required=True):
 
 def _check_code(value, where: str, problems: list[Problem], length: int = 8):
     if not value:
-        problems.append(Problem("error", where, "Thiếu giá trị"))
+        problems.append(Problem("warn", where, "Thiếu giá trị – sẽ in dấu “-”"))
         return
     d = digits_only(value)
     if len(d) != length:
@@ -126,7 +137,7 @@ def _check_code(value, where: str, problems: list[Problem], length: int = 8):
 
 def _check_series(values, where: str, problems: list[Problem], expect: int = 5):
     if not isinstance(values, list):
-        problems.append(Problem("error", where, "Phải là danh sách số"))
+        problems.append(Problem("warn", where, "Phải là danh sách số – sẽ in dấu “-”"))
         return
     if len(values) != expect:
         problems.append(
@@ -171,14 +182,16 @@ def _row_field_problem(block: dict, field: str, value, label: str,
 def validate(data: dict) -> list[Problem]:
     problems: list[Problem] = []
     if not isinstance(data, dict):
-        return [Problem("error", "$", "JSON gốc phải là object")]
+        return [Problem("error", "$", "JSON gốc phải là object", blocking=True)]
 
     tt = data.get("thong_tin_chung") or {}
     if not tt:
-        problems.append(Problem("error", "thong_tin_chung", "Thiếu khối thông tin chung"))
+        problems.append(Problem("warn", "thong_tin_chung",
+                                "Thiếu khối thông tin chung – các ô sẽ in dấu “-”"))
     for key in REQUIRED_COMMON:
         if not (tt.get(key) or "").strip():
-            problems.append(Problem("error", f"thong_tin_chung.{key}", "Thiếu giá trị"))
+            problems.append(Problem("warn", f"thong_tin_chung.{key}",
+                                    "Thiếu giá trị – sẽ in dấu “-”, bổ sung sau cũng được"))
     _check_date(tt.get("ngay_kiem_dinh"), "thong_tin_chung.ngay_kiem_dinh", problems)
     _check_date(
         tt.get("ngay_lap_bien_ban"), "thong_tin_chung.ngay_lap_bien_ban", problems,
@@ -203,7 +216,8 @@ def validate(data: dict) -> list[Problem]:
                     where = f"{key}.{field}"
                     if _row_field_problem(block, field, value, label, problems, where):
                         continue
-                    problems.append(Problem("error", where, f"Thiếu {label}"))
+                    problems.append(Problem("warn", where,
+                                            f"Thiếu {label} – sẽ in dấu “-”"))
                 continue
         if form in ("45", "46", "47") and not (block.get("chi_danh") or "").strip():
             if not _rows(block.get("rows")):
@@ -238,9 +252,9 @@ def validate(data: dict) -> list[Problem]:
                     if item.get(f) in (None, ""):
                         problems.append(
                             Problem(
-                                "error",
+                                "warn",
                                 f"{key}.r_cach_dien_Mohm.{tbl}.{f}",
-                                "Thiếu số liệu điện trở cách điện",
+                                "Thiếu số liệu điện trở cách điện – sẽ in dấu “-”",
                             )
                         )
         if form == "45" and block.get("so_tem"):
@@ -254,5 +268,6 @@ def validate(data: dict) -> list[Problem]:
                 )
 
     if not found_any:
-        problems.append(Problem("error", "$", "Không có khối bien_ban_44..48 nào"))
+        problems.append(Problem("error", "$", "Không có khối bien_ban_44..48 nào",
+                                blocking=True))
     return problems

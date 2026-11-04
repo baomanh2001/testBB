@@ -139,7 +139,8 @@ def _render(data: dict) -> tuple[dict[str, bytes], list[str]]:
 
 
 def _problems_json(problems) -> list[dict]:
-    return [{"level": p.level, "where": p.where, "message": p.message} for p in problems]
+    return [{"level": p.level, "where": p.where, "message": p.message,
+             "blocking": bool(p.blocking)} for p in problems]
 
 
 def _gemini_key() -> str | None:
@@ -389,7 +390,7 @@ def api_validate():
         return jsonify({"ok": False, "error": "JSON không hợp lệ"}), 400
     problems = validate(data)
     return jsonify({
-        "ok": not any(p.level == "error" for p in problems),
+        "ok": not any(p.blocking for p in problems),
         "problems": _problems_json(problems),
         "forms": [k for k in sorted(TEMPLATES) if DATA_KEYS[k] in data],
     })
@@ -402,10 +403,13 @@ def api_render():
     if not isinstance(data, dict):
         return jsonify({"ok": False, "error": "JSON không hợp lệ"}), 400
     problems = validate(data)
-    if any(p.level == "error" for p in problems):
+    # Ô trống / thiếu số liệu KHÔNG chặn: vẫn sinh Word và cho xem trước,
+    # người dùng in ra bổ sung tay. Chỉ chặn khi dữ liệu không dùng được.
+    blocking = [p for p in problems if p.blocking]
+    if blocking:
         return jsonify({
             "ok": False,
-            "error": "Dữ liệu còn lỗi, chưa thể sinh biên bản",
+            "error": "Dữ liệu không dùng được để sinh biên bản",
             "problems": _problems_json(problems),
         }), 400
     try:

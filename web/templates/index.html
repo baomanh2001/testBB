@@ -447,8 +447,9 @@ function alertHtml(cls, ic, html){
 }
 function problemsHtml(list){
   if(!list || !list.length) return "";
-  const errs = list.filter(p => p.level === "error");
-  const warns = list.filter(p => p.level !== "error");
+  // Chỉ cảnh báo chặn in mới là "lỗi"; ô trống chỉ là nhắc nhẹ.
+  const errs = list.filter(p => p.blocking);
+  const warns = list.filter(p => !p.blocking);
   let out = "";
   if(errs.length){
     out += alertHtml("err", "✕", `<b>${errs.length} lỗi cần sửa</b><ul>` +
@@ -456,8 +457,10 @@ function problemsHtml(list){
       `</ul>`);
   }
   if(warns.length){
-    out += alertHtml("warn", "!", `<b>${warns.length} cảnh báo</b><ul>` +
+    out += alertHtml("warn", "!", `<b>${warns.length} cảnh báo</b> — vẫn sinh và xem trước Word được, ` +
+      `ô trống sẽ in dấu “-”.<ul>` +
       warns.slice(0,6).map(p => `<li><code>${esc(p.where)}</code> — ${esc(p.message)}</li>`).join("") +
+      (warns.length > 6 ? `<li>… và ${warns.length - 6} cảnh báo khác</li>` : "") +
       `</ul>`);
   }
   return out;
@@ -1432,10 +1435,14 @@ $("btnValidate").onclick = async () => {
     const r = await fetch("/api/validate", {method:"POST", headers:{"Content-Type":"application/json"},
                                             body: JSON.stringify(DATA)});
     const d = await r.json();
-    const errs = (d.problems || []).filter(p => p.level === "error");
+    const errs = (d.problems || []).filter(p => p.blocking);
+    const warns = (d.problems || []).filter(p => !p.blocking);
     $("status").innerHTML = errs.length
       ? problemsHtml(d.problems)
-      : alertHtml("ok", "✓", `Dữ liệu hợp lệ. Sẽ sinh <b>${(d.forms||[]).length} biên bản</b>: ${(d.forms||[]).join(", ")}`);
+      : alertHtml("ok", "✓",
+          `Sẵn sàng sinh <b>${(d.forms||[]).length} biên bản</b>: ${(d.forms||[]).join(", ")}` +
+          (warns.length ? `<div class="sub">${warns.length} ô còn trống — vẫn in được, sẽ hiện dấu “-”.</div>` : ""));
+    if(!errs.length && d.problems && d.problems.length) $("status").innerHTML += problemsHtml(warns);
   }catch(e){ $("status").innerHTML = alertHtml("err", "✕", "Lỗi khi gọi máy chủ: " + esc(e.message)); }
 };
 
