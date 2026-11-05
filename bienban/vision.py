@@ -59,6 +59,8 @@ FORM_DEVICE = {
     "47": "Cầu chì tự rơi (FCO)",
     "48": "Điện trở nối đất",
     "49": "Máy biến áp 3 pha (MBA 3P, Dyn11)",
+    "93": "Máy cắt hạ thế (ACB)",
+    "97": "Thông tuyến cáp ngầm trung thế",
 }
 
 
@@ -77,6 +79,8 @@ FORM_ANCHORS = {
     "47": "tiêu đề “CẦU CHÌ TỰ RƠI (FCO)”; bảng có Trước khi thử cao áp / Sau khi thử cao áp",
     "48": "tiêu đề “ĐIỆN TRỞ NỐI ĐẤT”; bảng có Tình trạng kết nối trung tính / Loại tiếp đất / Giá trị đo (Ω)",
     "49": "tiêu đề “MÁY BIẾN ÁP 3 PHA”; Số pha 03 + Tổ đấu dây Dyn11; bảng cách điện Cao – Vỏ / Cao – Hạ / Hạ – Vỏ; tỉ số K1/K2/K3",
+    "93": "tiêu đề “MÁY CẮT HẠ THẾ (ACB)”; Giống MCCB nhưng ghi rõ ACB, dòng định mức lớn (800–4000A), có Điện áp cách điện + Điện áp chịu xung",
+    "97": "tiêu đề “THÔNG TUYẾN CÁP NGẦM TRUNG THẾ”; có Đoạn cáp đi từ / Đến / Tiết diện và 2 bảng đo THEO PHA (Pha 1–(2+3+vỏ)…)",
 }
 
 

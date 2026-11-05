@@ -662,7 +662,9 @@ class TestAIEndpoints:
     def test_schema_endpoint(self, client):
         body = client.get("/api/ai/schema").get_json()
         assert body["ok"] is True
-        assert set(body["schema"]["forms"]) == {"44", "45", "46", "47", "48", "49"}
+        from bienban.spec import TEMPLATES
+
+        assert set(body["schema"]["forms"]) == set(TEMPLATES)
         for form in body["schema"]["forms"].values():
             for g in form["groups"]:
                 assert "fields" in g or "table" in g
@@ -919,7 +921,10 @@ class TestUI:
                     alias = {"insulation": "r_cach_dien_Mohm", "mccb": "rows",
                              "la": "rows", "fco": "rows", "earth": "rows",
                              # mẫu 49 (MBA 3 pha) dùng bảng riêng
-                             "insulation_3p": "r_cach_dien_Mohm"}
+                             "insulation_3p": "r_cach_dien_Mohm",
+                             # mẫu 97 (cáp ngầm): mỗi bảng Word là một khoá riêng
+                             "cap_ngam": "r_cach_dien_Mohm",
+                             "cap_ngam_dc": "thu_dien_ap_mot_chieu"}
                     key = alias.get(it["table"], it["table"])
                     assert key in tables, (form, it["table"])
 
@@ -2240,7 +2245,10 @@ class TestLauncher:
         rc = launcher.check()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Mẫu Word      : 6/6" in out
+        from bienban.spec import TEMPLATES
+
+        n = len(TEMPLATES)
+        assert f"Mẫu Word      : {n}/{n}" in out
         assert "API key Gemini" in out
 
     def test_launcher_runs_server(self, launcher, monkeypatch):
@@ -2607,3 +2615,100 @@ class TestClassifyAndSession:
         data = {"thong_tin_chung": {"ngay_kiem_dinh": "25/10/2026"},
                 "bien_ban_49_mba_3p": {"so_bien_ban": "50921026/BB-TC"}}
         assert not [p for p in validate(data) if p.where.endswith("so_bien_ban")]
+
+
+class TestForm93And97:
+    """Hai mẫu dựng thêm từ biên bản thật trong repo (093 ACB, 097 cáp ngầm)."""
+
+    def test_files_exist_and_registered(self):
+        from bienban.spec import DATA_KEYS, TEMPLATES, TITLES
+
+        for form, name in (("93", "MÁY CẮT HẠ THẾ (ACB)"),
+                           ("97", "THÔNG TUYẾN CÁP NGẦM TRUNG THẾ")):
+            assert form in TEMPLATES and form in DATA_KEYS and form in TITLES
+            assert TITLES[form] == name
+            assert (TEMPLATES).get(form) and (ROOT / "templates" / TEMPLATES[form]).exists()
+
+    def test_acb_renders_like_mccb(self, tmp_path):
+        from bienban.fill import render_all
+
+        data = {"bien_ban_93_acb": {
+            "so_bien_ban": "50931026/BB-TC", "loai": "ACB", "hieu": "LS",
+            "kieu": "AS-25E3-25H", "so_cuc": "03", "dien_ap_dinh_muc": "500V",
+            "dong_dinh_muc": "2500A", "dong_ngan_mach_toi_da": "85kA",
+            "tan_so": "50/60Hz", "dien_ap_cach_dien": "1000V",
+            "dien_ap_xung": "12kV", "kiem_tra_ben_ngoai": "Bình thường",
+            "so_luong": "01",
+            "rows": {"rows": [{"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000",
+                               "rtx_a": "279", "rtx_b": "281", "rtx_c": "277",
+                               "utest": "3", "dong_cat": "5", "ket_qua": "Đạt",
+                               "so_tem": "016138"}]},
+        }}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES,
+                                     out_dir=tmp_path, forms=["93"])
+        assert warnings == [], warnings
+        doc = docx.Document(str(paths[0]))
+        text = "\n".join([c.text for t in doc.tables for r in t.rows for c in r.cells]
+                         + [p.text for p in doc.paragraphs])
+        for must in ("279", "281", "277", "016138", "AS-25E3-25H", "2500A",
+                     "MÁY CẮT HẠ THẾ (ACB)"):
+            assert must in text, f"mẫu 93 thiếu {must!r}"
+
+    def test_cap_ngam_renders_by_phase(self, tmp_path):
+        from bienban.fill import render_all
+
+        data = {"bien_ban_97_cap_ngam": {
+            "so_bien_ban": "50971026/BB-TC", "so_tem": "016139",
+            "doan_cap_tu": "Trụ 82/1", "doan_cap_den": "Trạm biến áp 1500kVA",
+            "tiet_dien": "3 x 50mm2", "dien_ap_dinh_muc": "12,7/22(24)kV",
+            "r_cach_dien_Mohm": {"rows": [
+                {"key": "pha1", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                {"key": "pha2", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                {"key": "pha3", "tieu_chuan": ">5000", "so_lieu_do": ">10000"}]},
+            "thu_dien_ap_mot_chieu": {"rows": [
+                {"key": "pha1", "thoi_gian": "15", "dien_ap": "38,1", "dong_ro": "17"},
+                {"key": "pha2", "thoi_gian": "15", "dien_ap": "38,1", "dong_ro": "12"},
+                {"key": "pha3", "thoi_gian": "15", "dien_ap": "38,1", "dong_ro": "15"}]},
+        }}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES,
+                                     out_dir=tmp_path, forms=["97"])
+        assert warnings == [], warnings
+        doc = docx.Document(str(paths[0]))
+        text = "\n".join([c.text for t in doc.tables for r in t.rows for c in r.cells]
+                         + [p.text for p in doc.paragraphs])
+        for must in ("Pha 1 – (2+3+vỏ)", "Pha 2 – (1+3+vỏ)", "Pha 3 – (1+2+vỏ)",
+                     ">10000", "38,1", "17", "12", "15", "016139", "Trụ 82/1"):
+            assert must in text, f"mẫu 97 thiếu {must!r}"
+
+    def test_cap_ngam_blank_does_not_crash(self, tmp_path):
+        from bienban.fill import render_all
+
+        paths, warnings = render_all({"bien_ban_97_cap_ngam": {}},
+                                     templates_dir=TEMPLATES, out_dir=tmp_path,
+                                     forms=["97"])
+        assert paths and paths[0].exists()
+        assert all(not w.startswith("[BB 97] Không") for w in warnings)
+
+
+class TestUiDataKey:
+    """Lỗi thật: mẫu 49 ghi vào ``bien_ban_undefined`` vì UI hard-code 44–48."""
+
+    def test_ui_no_hardcoded_data_key_map(self):
+        html = (ROOT / "web" / "templates" / "index.html").read_text(encoding="utf-8")
+        assert "FORMS_INFO" in html
+        # bảng cứng cũ phải biến mất
+        assert 'const DATA_KEY = {44:"44_mba"' not in html
+
+    def test_every_form_has_server_data_key(self):
+        from bienban.spec import DATA_KEYS, TEMPLATES
+
+        assert set(DATA_KEYS) == set(TEMPLATES)
+        for key in DATA_KEYS.values():
+            assert key.startswith("bien_ban_")
+
+
+class TestResolvedImageFix:
+    def test_max_edge_is_high_enough_for_handwriting(self):
+        from bienban.vision import MAX_EDGE
+
+        assert MAX_EDGE >= 2400, "ảnh thu quá nhỏ thì chữ viết tay không đọc được"

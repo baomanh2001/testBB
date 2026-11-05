@@ -906,6 +906,41 @@ def fill_voltage_test_3p(doc, block: dict, cfg, log) -> list[str]:
                 norm_number(d.get("ha_vo") or d.get("ha_ap")), thoi_gian))
     return []
 
+def fill_cap_ngam(doc, block: dict, cfg, log) -> list[str]:
+    """Bảng 1 của mẫu 97: điện trở cách điện **theo pha** (Pha 1/2/3)."""
+    t = _find_table(doc, "cap_ngam")
+    if t is None:
+        return ["Không tìm thấy bảng 'Điện trở cách điện' của cáp ngầm"]
+    rows = _rows_of(block, "r_cach_dien_Mohm") or []
+    for i, item in enumerate(rows[:3]):
+        if i + 1 >= len(t.rows):
+            break
+        cells = t.rows[i + 1].cells
+        _put(cells[1]._tc, norm_number(item.get("tieu_chuan")))
+        _put(cells[2]._tc, norm_number(item.get("so_lieu_do")))
+    if rows:
+        log(f"    ✓ R cách điện cáp             = {len(rows[:3])} pha")
+    return []
+
+
+def fill_cap_ngam_dc(doc, block: dict, cfg, log) -> list[str]:
+    """Bảng 2 của mẫu 97: điện áp một chiều tăng cao theo pha."""
+    t = _find_table(doc, "cap_ngam_dc")
+    if t is None:
+        return ["Không tìm thấy bảng 'Điện áp một chiều tăng cao' của cáp ngầm"]
+    rows = _rows_of(block, "thu_dien_ap_mot_chieu") or []
+    for i, item in enumerate(rows[:3]):
+        if i + 1 >= len(t.rows):
+            break
+        cells = t.rows[i + 1].cells
+        _put(cells[1]._tc, norm_number(item.get("thoi_gian")))
+        _put(cells[2]._tc, norm_number(item.get("dien_ap")))
+        _put(cells[3]._tc, norm_number(item.get("dong_ro")))
+    if rows:
+        log(f"    ✓ Thử áp 1 chiều cáp          = {len(rows[:3])} pha")
+    return []
+
+
 TABLE_FILLERS: dict[str, Callable] = {
     "insulation": fill_insulation,
     "r_dc": fill_r_dc,
@@ -921,6 +956,8 @@ TABLE_FILLERS: dict[str, Callable] = {
     "r_dc_3p": fill_r_dc_3p,
     "ratio_3p": fill_ratio_3p,
     "voltage_test_3p": fill_voltage_test_3p,
+    "cap_ngam": fill_cap_ngam,
+    "cap_ngam_dc": fill_cap_ngam_dc,
 }
 
 
@@ -945,6 +982,8 @@ def build_conclusion(form: str, block: dict, data: dict, cfg: dict) -> str:
             "47": "FCO",
             "48": "điện trở nối đất",
             "49": "máy biến áp 3 pha",
+            "93": "máy cắt hạ thế (ACB)",
+            "97": "đoạn cáp ngầm trung thế",
         }[form]
     template = (cfg.get("conclusions") or {}).get("default_template") or \
         "{qty} {device} trên đạt yêu cầu đóng điện vận hành"
@@ -1020,7 +1059,8 @@ def render_form(
 
     for key in ("insulation", "r_dc", "ratio", "no_load", "short_circuit",
                 "voltage_test", "mccb", "la", "fco", "earth",
-                "insulation_3p", "r_dc_3p", "ratio_3p", "voltage_test_3p"):
+                "insulation_3p", "r_dc_3p", "ratio_3p", "voltage_test_3p",
+                "cap_ngam", "cap_ngam_dc"):
         if any(item.get("table") == key for item in LABELS[form]):
             warnings += TABLE_FILLERS[key](doc, values, cfg, log)
 

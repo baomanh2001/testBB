@@ -281,6 +281,89 @@ FORM_GROUPS: dict[str, list[dict]] = {
              "hint": "Để trống = tool tự sinh câu kết luận chuẩn"},
         ]},
     ],
+    # ---------------------------------------------------------------- 93 --
+    # ACB dùng đúng bộ ô và bảng của MCCB (cùng 10 cột, cùng thông số),
+    # chỉ khác tên loại máy — nên tái dùng để không lệch chuẩn.
+    "93": [
+        {"title": "I. Thông tin thiết bị", "fields": [
+            _txt("hieu", "Hiệu", "VD: LS"),
+            _txt("so_cuc", "Số cực", "VD: 03", type="code"),
+            _txt("loai", "Loại", "VD: ACB", type="select",
+                 options=["ACB", "MCCB", "MCB", "ELCB", "RCBO"]),
+            _txt("kieu", "Kiểu", "VD: AS-25E3-25H"),
+            _num("dien_ap_dinh_muc", "Điện áp định mức", "V", "VD: 500V"),
+            _num("dong_dinh_muc", "Dòng điện định mức", "A", "VD: 2500A"),
+            _num("dong_ngan_mach_toi_da", "Dòng ngắn mạch tối đa", "kA", "VD: 85kA"),
+            _num("tan_so", "Tần số", "Hz", "VD: 50/60Hz"),
+            _num("dien_ap_cach_dien", "Điện áp cách điện định mức", "V", "VD: 1000V"),
+            _num("dien_ap_xung", "Điện áp chịu xung định mức", "kV", "VD: 12kV"),
+            _txt("kiem_tra_ben_ngoai", "Kiểm tra bên ngoài", "", type="select", options=_NGOAI),
+            _txt("so_luong", "Số lượng", "VD: 01", type="code"),
+        ]},
+        {"title": "II. Bảng kết quả thử nghiệm", "table": {
+            "kind": "rows", "key": "rows", "stt": True, "addable": True,
+            "columns": [
+                {"key": "rcd_close", "label": "R cách điện – Close (MΩ)", "type": "number"},
+                {"key": "rcd_open", "label": "R cách điện – Open (MΩ)", "type": "number"},
+                {"key": "rtx_a", "label": "R tiếp xúc – Pha A (µΩ)", "type": "number"},
+                {"key": "rtx_b", "label": "R tiếp xúc – Pha B (µΩ)", "type": "number"},
+                {"key": "rtx_c", "label": "R tiếp xúc – Pha C (µΩ)", "type": "number"},
+                {"key": "utest", "label": "Utest (kV/1′)", "type": "number"},
+                {"key": "dong_cat", "label": "Đóng Cắt", "type": "number"},
+                {"key": "ket_qua", "label": "Kết quả", "type": "select", "options": _KET_QUA},
+                {"key": "so_tem", "label": "Số tem", "type": "code"},
+            ],
+            "new_row": {"rcd_close": "", "rcd_open": "", "rtx_a": "", "rtx_b": "",
+                        "rtx_c": "", "utest": "3", "dong_cat": "5",
+                        "ket_qua": "", "so_tem": ""},
+            "sync_so_luong": "so_luong",
+        }},
+        {"title": "Kết luận", "fields": [
+            {"key": "ket_luan", "label": "Kết luận", "type": "textarea",
+             "hint": "Để trống = tool tự sinh câu kết luận chuẩn"},
+        ]},
+    ],
+    # ---------------------------------------------------------------- 97 --
+    "97": [
+        {"title": "I. Thông số tuyến cáp", "fields": [
+            _txt("so_tem", "Số tem", "VD: 016139", type="code"),
+            _txt("doan_cap_tu", "Đoạn cáp đi từ", "VD: Trụ 82/1"),
+            _txt("doan_cap_den", "Đến", "VD: Trạm biến áp 1500kVA"),
+            _txt("loai_cap", "Loại cáp", "VD: Cáp ngầm trung thế"),
+            _txt("tiet_dien", "Tiết diện", "VD: 3 x 50mm2"),
+            _num("dien_ap_dinh_muc", "Điện áp định mức", "kV", "VD: 12,7/22(24)kV"),
+            _num("tan_so", "Tần số", "Hz", "VD: 50Hz"),
+            _num("nhiet_do", "Nhiệt độ", "°C", "VD: 34"),
+            _txt("kiem_tra_ben_ngoai", "Kiểm tra bên ngoài", "", type="select", options=_NGOAI),
+        ]},
+        {"title": "II. Điện trở cách điện theo pha", "table": {
+            "kind": "fixed", "key": "r_cach_dien_Mohm", "columns": [
+                {"key": "tieu_chuan", "label": "Tiêu chuẩn (MΩ)", "type": "number"},
+                {"key": "so_lieu_do", "label": "Số liệu đo (MΩ)", "type": "number"},
+            ],
+            "rows": [
+                {"key": "pha1", "label": "Pha 1 – (2+3+vỏ)"},
+                {"key": "pha2", "label": "Pha 2 – (1+3+vỏ)"},
+                {"key": "pha3", "label": "Pha 3 – (1+2+vỏ)"},
+            ],
+        }},
+        {"title": "III. Điện áp một chiều tăng cao", "table": {
+            "kind": "fixed", "key": "thu_dien_ap_mot_chieu", "columns": [
+                {"key": "thoi_gian", "label": "Thời gian (phút)", "type": "number"},
+                {"key": "dien_ap", "label": "Điện áp thử (kV)", "type": "number"},
+                {"key": "dong_ro", "label": "Dòng rò (µA)", "type": "number"},
+            ],
+            "rows": [
+                {"key": "pha1", "label": "Pha 1 – (2+3+vỏ)"},
+                {"key": "pha2", "label": "Pha 2 – (1+3+vỏ)"},
+                {"key": "pha3", "label": "Pha 3 – (1+2+vỏ)"},
+            ],
+        }},
+        {"title": "Kết luận", "fields": [
+            {"key": "ket_luan", "label": "Kết luận", "type": "textarea",
+             "hint": "Để trống = tool tự sinh câu kết luận chuẩn"},
+        ]},
+    ],
     # ------------------------------------------------------------------ 46 --
     "46": [
         {"title": "I. Thông tin thiết bị", "fields": [

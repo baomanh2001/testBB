@@ -40,6 +40,8 @@ FORM_KEYS = [
     ("47", "bien_ban_47_fco"),
     ("48", "bien_ban_48_tiep_dat"),
     ("49", "bien_ban_49_mba_3p"),
+    ("93", "bien_ban_93_acb"),
+    ("97", "bien_ban_97_cap_ngam"),
 ]
 
 REQUIRED_COMMON = [
@@ -108,6 +110,18 @@ REQUIRED_FIELDS = {
         ("dien_ap_dinh_muc", True, "Điện áp định mức"),
         ("to_dau_day", True, "Tổ đấu dây"),
         ("so_bien_ban", True, "Số biên bản"),
+    ],
+    "93": [
+        ("so_bien_ban", True, "Số biên bản"),
+        ("loai", True, "Loại máy cắt"),
+        ("dong_dinh_muc", True, "Dòng điện định mức"),
+        ("so_bien_ban", True, "Số biên bản"),
+    ],
+    "97": [
+        ("so_bien_ban", True, "Số biên bản"),
+        ("doan_cap_tu", True, "Đoạn cáp đi từ"),
+        ("doan_cap_den", True, "Đến"),
+        ("tiet_dien", True, "Tiết diện"),
     ],
 }
 
