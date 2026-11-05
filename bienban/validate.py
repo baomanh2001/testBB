@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from .normalize import digits_only, norm_date
+from .spec import FORM_DOC_CODE, decode_doc_no, expected_doc_no
 
 
 @dataclass
@@ -39,6 +40,8 @@ FORM_KEYS = [
     ("47", "bien_ban_47_fco"),
     ("48", "bien_ban_48_tiep_dat"),
     ("49", "bien_ban_49_mba_3p"),
+    ("93", "bien_ban_93_acb"),
+    ("97", "bien_ban_97_cap_ngam"),
 ]
 
 REQUIRED_COMMON = [
@@ -107,6 +110,18 @@ REQUIRED_FIELDS = {
         ("dien_ap_dinh_muc", True, "Điện áp định mức"),
         ("to_dau_day", True, "Tổ đấu dây"),
         ("so_bien_ban", True, "Số biên bản"),
+    ],
+    "93": [
+        ("so_bien_ban", True, "Số biên bản"),
+        ("loai", True, "Loại máy cắt"),
+        ("dong_dinh_muc", True, "Dòng điện định mức"),
+        ("so_bien_ban", True, "Số biên bản"),
+    ],
+    "97": [
+        ("so_bien_ban", True, "Số biên bản"),
+        ("doan_cap_tu", True, "Đoạn cáp đi từ"),
+        ("doan_cap_den", True, "Đến"),
+        ("tiet_dien", True, "Tiết diện"),
     ],
 }
 
@@ -239,6 +254,24 @@ def validate(data: dict) -> list[Problem]:
                 problems.append(
                     Problem("warn", f"{key}.so_bien_ban", f"Số '{so}' thiếu hậu tố '/BB-TC'")
                 )
+            # --- phiên cũ hay phiên mới? -----------------------------------
+            # Số hiệu = 50 | mã văn bản | tháng | năm. Đối chiếu với ngày
+            # kiểm định để phát hiện tờ bị trộn từ đợt khác.
+            info = decode_doc_no(so)
+            ngay = str(tt.get("ngay_kiem_dinh") or "").strip()
+            if info.get("ok") and ngay:
+                want = expected_doc_no(form, ngay)
+                if want and so.split("/")[0].strip() != want.split("/")[0].strip():
+                    problems.append(Problem(
+                        "warn", f"{key}.so_bien_ban",
+                        f"Số {so} là phiên {info['phien']}, nhưng ngày kiểm định "
+                        f"{ngay} → đúng ra phải là {want}. Có thể tờ này thuộc "
+                        f"đợt khác (cùng mẫu nhưng khác ngày)."))
+                elif info.get("code") and info["code"] != FORM_DOC_CODE.get(form):
+                    problems.append(Problem(
+                        "warn", f"{key}.so_bien_ban",
+                        f"Mã văn bản trong số hiệu là {info['code']}, không phải "
+                        f"{FORM_DOC_CODE.get(form)} của mẫu {form}."))
         if form == "44":
             if block.get("so_may"):
                 _check_code(block["so_may"], f"{key}.so_may", problems)

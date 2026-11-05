@@ -56,8 +56,11 @@
         <div class="thumbs" id="thumbs"></div>
         <div class="lightbox" id="lightbox" hidden></div>
         <div class="row tight" id="imgActions" style="display:none">
+          <button class="small" id="btnAutoGroup"
+                  title="Nhờ AI xem mỗi ảnh là tờ biên bản nào rồi tự tách nhóm">
+            🤖 Chia nhóm tự động</button>
           <button class="small" id="btnGroup" title="Tách ảnh thành từng biên bản riêng">
-            🗂 Chia nhóm</button>
+            🗂 Chia nhóm tay</button>
           <button class="ghost small" id="btnClear">Xoá hết ảnh</button>
         </div>
         <!-- chia nhóm thủ công: mỗi nhóm = 1 biên bản -->
@@ -222,8 +225,16 @@ let IMAGES = [];
 let TOKEN = null, PREVIEWS = {}, DIRTY = false;
 
 const FORM_KEYS = Object.keys(SCHEMA.forms).sort();
-const DATA_KEY = {44:"44_mba",45:"45_mccb",46:"46_la",47:"47_fco",48:"48_tiep_dat"};
-function dataKey(form){ return "bien_ban_" + DATA_KEY[form]; }
+/* Khoá dữ liệu lấy THẲNG từ server (spec.DATA_KEYS) — trước đây bảng này viết
+   cứng 44–48 nên mẫu 49 ghi vào "bien_ban_undefined" và mất sạch số liệu. */
+const DATA_KEY = {};
+const FORMS_INFO = {{ forms|tojson }};
+FORMS_INFO.forEach(f => { DATA_KEY[f.key] = f.data_key.replace(/^bien_ban_/, ""); });
+function dataKey(form){
+  const k = DATA_KEY[form];
+  if(!k) console.warn("Không có khoá dữ liệu cho mẫu", form);
+  return "bien_ban_" + (k || form);
+}
 function formHasData(form){
   const b = DATA[dataKey(form)];
   return !!b && Object.keys(b).length > 0;
@@ -979,6 +990,71 @@ $("drop").addEventListener("drop", e => addFiles(e.dataTransfer.files));
 $("btnClear").onclick = () => {
   idbClear(); IMAGES.forEach(i => URL.revokeObjectURL(i.url)); IMAGES = [];
   closeGroups(); renderThumbs(); };
+
+/* ---------------- chia nhóm TỰ ĐỘNG bằng AI ---------------- */
+/* Mỗi ảnh được hỏi riêng "đây là tờ biên bản nào" (prompt ngắn, không đọc số),
+   rồi gom các ảnh cùng mẫu + cùng ngày thành một nhóm. Nhờ vậy 15 ảnh lẫn hai
+   đợt vẫn được tách đúng mà không phải kéo tay từng ảnh. */
+async function autoGroup(){
+  if(!IMAGES.length){ setAiStatus("Chưa chọn ảnh nào.", "warn"); return; }
+  const key = ($("key").value || "").trim();
+  if(!key && !ENV_KEY){
+    setAiStatus("Chưa có API key Gemini. Dán key ở ô phía trên.", "warn");
+    return;
+  }
+  const btn = $("btnAutoGroup");
+  btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Đang xem…`;
+  setAiStatus(`<span class="spin"></span> Đang xem ${IMAGES.length} ảnh thuộc tờ nào…`, "info");
+  try{
+    const fd = new FormData();
+    IMAGES.forEach((im, i) => fd.append("images", im.file, im.file.name || `anh${i}.jpg`));
+    const mSel = $("model").value || DEFAULT_MODEL;
+    if(mSel) fd.append("model", mSel);
+    const r = await fetch("/api/ai/classify", {method:"POST", body: fd,
+                          headers: key ? {"X-Gemini-Key": key} : {}});
+    const d = await r.json();
+    if(!d.ok){ setAiStatus(`<b>Không chia nhóm được.</b><br>${esc(d.error || "lỗi không rõ")}`, "err"); return; }
+
+    // gom theo mẫu; giữ thứ tự ảnh
+    const byForm = {};
+    d.photos.forEach(ph => {
+      const f = ph.form || "";
+      (byForm[f] = byForm[f] || []).push(ph.image_index);
+    });
+    GROUPS = [];
+    Object.keys(byForm).forEach(f => {
+      const idx = byForm[f].slice().sort((a,b) => a-b);
+      if(f && SCHEMA.forms[f]){
+        GROUPS.push({form:f, idx});
+      }else{
+        // không nhận ra: mỗi ảnh một nhóm để người dùng tự chọn mẫu
+        idx.forEach(i => GROUPS.push({form:"", idx:[i]}));
+      }
+    });
+    $("groups").hidden = false;
+    renderGroups();
+
+    const lines = Object.keys(byForm).map(f => {
+      const n = byForm[f].length;
+      const name = f && SCHEMA.forms[f] ? `mẫu ${f} – ${SCHEMA.forms[f].title}` : "chưa rõ tờ nào";
+      const idxs = byForm[f].map(i => `#${i+1}`).join(", ");
+      return `• ${name}: ${n} ảnh (${idxs})`;
+    });
+    const unknown = (byForm[""] || []).length;
+    setAiStatus(`<b>Đã chia ${GROUPS.length} nhóm → ${GROUPS.length} biên bản.</b><br>` +
+      lines.join("<br>") +
+      (unknown ? `<br><b>${unknown} ảnh chưa nhận ra tờ nào</b> — mỗi ảnh thành một nhóm, ` +
+                 `chọn mẫu tay ở ô bên cạnh nhóm đó.` : "") +
+      `<br><span class="hint">Ảnh cùng một tờ (mặt trước/sau) nằm cùng nhóm — ` +
+      `kéo thả để sửa nếu cần.</span>`,
+      unknown ? "warn" : "ok");
+  }catch(e){
+    setAiStatus("Lỗi khi gọi máy chủ: " + esc(e.message), "err");
+  }finally{
+    btn.disabled = false; btn.innerHTML = "🤖 Chia nhóm tự động";
+  }
+}
+$("btnAutoGroup").onclick = autoGroup;
 
 /* ---------------- chia nhóm thủ công (mỗi nhóm = 1 biên bản) ---------------- */
 /* GROUPS[i] = {form: "45" | "" (AI tự nhận), idx: [chỉ số ảnh trong IMAGES]} */

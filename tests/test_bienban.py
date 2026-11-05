@@ -662,7 +662,9 @@ class TestAIEndpoints:
     def test_schema_endpoint(self, client):
         body = client.get("/api/ai/schema").get_json()
         assert body["ok"] is True
-        assert set(body["schema"]["forms"]) == {"44", "45", "46", "47", "48", "49"}
+        from bienban.spec import TEMPLATES
+
+        assert set(body["schema"]["forms"]) == set(TEMPLATES)
         for form in body["schema"]["forms"].values():
             for g in form["groups"]:
                 assert "fields" in g or "table" in g
@@ -919,7 +921,10 @@ class TestUI:
                     alias = {"insulation": "r_cach_dien_Mohm", "mccb": "rows",
                              "la": "rows", "fco": "rows", "earth": "rows",
                              # mẫu 49 (MBA 3 pha) dùng bảng riêng
-                             "insulation_3p": "r_cach_dien_Mohm"}
+                             "insulation_3p": "r_cach_dien_Mohm",
+                             # mẫu 97 (cáp ngầm): mỗi bảng Word là một khoá riêng
+                             "cap_ngam": "r_cach_dien_Mohm",
+                             "cap_ngam_dc": "thu_dien_ap_mot_chieu"}
                     key = alias.get(it["table"], it["table"])
                     assert key in tables, (form, it["table"])
 
@@ -2240,7 +2245,10 @@ class TestLauncher:
         rc = launcher.check()
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Mẫu Word      : 6/6" in out
+        from bienban.spec import TEMPLATES
+
+        n = len(TEMPLATES)
+        assert f"Mẫu Word      : {n}/{n}" in out
         assert "API key Gemini" in out
 
     def test_launcher_runs_server(self, launcher, monkeypatch):
@@ -2448,3 +2456,259 @@ class TestForm49:
         assert len(paths) == 1
         assert paths[0].exists()
         assert all(w.level != "error" for w in warnings)
+
+
+class TestAiKeyCrash:
+    """Lỗi thật người dùng gặp: dán API key → "list object has no attribute get"."""
+
+    def test_normalize_accepts_bare_list(self):
+        from bienban.vision import normalize_ai_result
+
+        raw = [{"report_type": "46", "data": {"so_bien_ban": "50941026/BB-TC"}}]
+        out = normalize_ai_result(raw, forms=["46"])
+        assert out["bien_ban_46_la"]["so_bien_ban"] == "50941026/BB-TC"
+
+    def test_parse_json_loose_always_dict(self):
+        from bienban.vision import parse_json_loose
+
+        assert isinstance(parse_json_loose('[{"report_type":"44"}]'), dict)
+        assert isinstance(parse_json_loose('{"reports":[]}'), dict)
+        assert isinstance(parse_json_loose('```json\n[{"a":1}]\n```'), dict)
+        assert parse_json_loose('[{"reports":[{"report_type":"46"}]}]')["reports"]
+
+    def test_two_reports_same_form_are_kept(self):
+        """2 tờ LA của 2 đợt khác nhau không được ghi đè lên nhau."""
+        from bienban.vision import normalize_ai_result
+
+        raw = [{"report_type": "46", "data": {"so_bien_ban": "50941026/BB-TC"}},
+               {"report_type": "46", "data": {"so_bien_ban": "50461126/BB-TC"}}]
+        out = normalize_ai_result(raw, forms=["46"])
+        assert out["bien_ban_46_la"]["so_bien_ban"] == "50941026/BB-TC"
+        extras = out["_extra"]["bien_ban_46_la"]
+        assert [b["so_bien_ban"] for b in extras] == ["50461126/BB-TC"]
+        assert any("2 biên bản cùng loại" in n for n in out["_ai"]["notes"])
+
+    def test_render_emits_one_file_per_report(self, tmp_path):
+        from bienban.fill import render_all
+        from bienban.vision import normalize_ai_result
+
+        raw = [{"report_type": "46", "data": {"so_bien_ban": "50941026/BB-TC",
+                "rows": {"rows": [{"stt": "1", "doi_tuong": "LA 01",
+                                   "r_cach_dien": ">10000", "dong_ro": "17",
+                                   "u_ac": "35"}]}}},
+               {"report_type": "46", "data": {"so_bien_ban": "50461126/BB-TC",
+                "rows": {"rows": [{"stt": "1", "doi_tuong": "LA 01",
+                                   "r_cach_dien": ">10000", "dong_ro": "19",
+                                   "u_ac": "35"}]}}}]
+        data = normalize_ai_result(raw, forms=["46"])
+        paths, warnings = render_all(data, templates_dir=TEMPLATES,
+                                     out_dir=tmp_path, forms=["46"])
+        assert len(paths) == 2
+        assert sorted(p.name for p in paths) == ["46_50461126BBTC-2.docx",
+                                                 "46_50941026BBTC.docx"]
+        assert warnings == []
+
+
+class TestNoStaleNumbers:
+    """Mẫu Word còn số của đợt trước → bản in lặng lẽ giữ số cũ (nguy hiểm)."""
+
+    def test_blank_render_has_no_old_measures(self, tmp_path):
+        import re
+
+        from bienban.fill import render_all
+        from bienban.spec import DATA_KEYS
+
+        paths, _ = render_all({v: {} for v in DATA_KEYS.values()},
+                              templates_dir=TEMPLATES, out_dir=tmp_path)
+        pat = re.compile(r"^[><]?\d{3,6}([.,]\d+)?$")
+        for p in paths:
+            doc = docx.Document(str(p))
+            left = [c.text.strip() for t in doc.tables for r in t.rows
+                    for c in r.cells if pat.match(c.text.strip())]
+            assert not left, f"{p.name} còn số cũ: {left}"
+
+    def test_blank_render_has_no_baked_verdict(self, tmp_path):
+        from bienban.fill import render_all
+
+        paths, _ = render_all({"bien_ban_45_mccb": {}, "bien_ban_47_fco": {}},
+                              templates_dir=TEMPLATES, out_dir=tmp_path,
+                              forms=["45", "47"])
+        for p in paths:
+            doc = docx.Document(str(p))
+            txt = "\n".join(c.text for t in doc.tables for r in t.rows for c in r.cells)
+            assert "Đạt" not in txt, f"{p.name} vẫn in sẵn chữ Đạt"
+
+    def test_real_data_still_lands(self, tmp_path):
+        """Dọn số cũ KHÔNG được xoá số thật vừa điền."""
+        from bienban.fill import render_all
+
+        data = {"bien_ban_49_mba_3p": TestForm49.DATA}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES,
+                                     out_dir=tmp_path, forms=["49"])
+        text = "\n".join(c.text for t in docx.Document(str(paths[0])).tables
+                         for r in t.rows for c in r.cells)
+        for must in ("15300", "8200", "3,413", "52,262", "0,885", "1210,3"):
+            assert must in text, f"mất số thật {must!r}"
+        assert warnings == []
+
+
+class TestClassifyAndSession:
+    """Nhận dạng tờ nào + biết số hiệu thuộc phiên cũ hay mới."""
+
+    @pytest.mark.parametrize("title,form", [
+        ("MÁY CẮT HẠ THẾ (ACB)", "93"),
+        ("MÁY CẮT HẠ THẾ (MCCB)", "45"),
+        ("CẦU CHÌ TỰ RƠI CÓ DẬP HỒ QUANG (LBFCO)", "95"),
+        ("CẦU CHÌ TỰ RƠI (FCO)", "47"),
+        ("CHỐNG SÉT VAN (LA)", "46"),
+        ("THÔNG TUYẾN CÁP NGẦM TRUNG THẾ", "97"),
+        ("MÁY BIẾN ÁP 3 PHA", "49"),
+        ("MÁY BIẾN ÁP 1 PHA", "44"),
+        ("ĐIỆN TRỞ NỐI ĐẤT", "48"),
+    ])
+    def test_guess_form_from_title(self, title, form):
+        from bienban.vision import guess_form
+
+        pool = ["44", "45", "46", "47", "48", "49", "93", "95", "97"]
+        assert guess_form(title, available=pool) == form
+
+    def test_acb_not_confused_with_mccb(self):
+        from bienban.vision import guess_form
+
+        pool = ["45", "93"]
+        assert guess_form("MÁY CẮT HẠ THẾ (ACB)", available=pool) == "93"
+        assert guess_form("MÁY CẮT HẠ THẾ (MCCB)", available=pool) == "45"
+
+    def test_group_by_form(self):
+        from bienban.vision import group_by_form
+
+        photos = [{"image_index": 0, "form": "49"}, {"image_index": 1, "form": "48"},
+                  {"image_index": 2, "form": "49"}, {"image_index": 3, "form": ""}]
+        assert group_by_form(photos) == {"49": [0, 2], "48": [1], "": [3]}
+
+    def test_decode_doc_no(self):
+        from bienban.spec import decode_doc_no
+
+        info = decode_doc_no("50921026/BB-TC")
+        assert (info["code"], info["thang"], info["nam"]) == ("92", 10, 2026)
+        assert info["phien"] == "tháng 10/2026"
+        assert decode_doc_no("rác")["ok"] is False
+
+    def test_expected_doc_no(self):
+        from bienban.spec import expected_doc_no
+
+        assert expected_doc_no("49", "25/10/2026") == "50921026/BB-TC"
+        assert expected_doc_no("44", "01/11/2026") == "50441126/BB-TC"
+        assert expected_doc_no("49", "") == ""
+
+    def test_mixed_session_is_flagged(self):
+        from bienban.validate import validate
+
+        data = {"thong_tin_chung": {"ngay_kiem_dinh": "01/11/2026"},
+                "bien_ban_49_mba_3p": {"so_bien_ban": "50921026/BB-TC"}}
+        msgs = [p.message for p in validate(data) if p.where.endswith("so_bien_ban")]
+        assert any("tháng 10/2026" in m and "50921126" in m for m in msgs)
+
+    def test_matching_session_is_quiet(self):
+        from bienban.validate import validate
+
+        data = {"thong_tin_chung": {"ngay_kiem_dinh": "25/10/2026"},
+                "bien_ban_49_mba_3p": {"so_bien_ban": "50921026/BB-TC"}}
+        assert not [p for p in validate(data) if p.where.endswith("so_bien_ban")]
+
+
+class TestForm93And97:
+    """Hai mẫu dựng thêm từ biên bản thật trong repo (093 ACB, 097 cáp ngầm)."""
+
+    def test_files_exist_and_registered(self):
+        from bienban.spec import DATA_KEYS, TEMPLATES, TITLES
+
+        for form, name in (("93", "MÁY CẮT HẠ THẾ (ACB)"),
+                           ("97", "THÔNG TUYẾN CÁP NGẦM TRUNG THẾ")):
+            assert form in TEMPLATES and form in DATA_KEYS and form in TITLES
+            assert TITLES[form] == name
+            assert (TEMPLATES).get(form) and (ROOT / "templates" / TEMPLATES[form]).exists()
+
+    def test_acb_renders_like_mccb(self, tmp_path):
+        from bienban.fill import render_all
+
+        data = {"bien_ban_93_acb": {
+            "so_bien_ban": "50931026/BB-TC", "loai": "ACB", "hieu": "LS",
+            "kieu": "AS-25E3-25H", "so_cuc": "03", "dien_ap_dinh_muc": "500V",
+            "dong_dinh_muc": "2500A", "dong_ngan_mach_toi_da": "85kA",
+            "tan_so": "50/60Hz", "dien_ap_cach_dien": "1000V",
+            "dien_ap_xung": "12kV", "kiem_tra_ben_ngoai": "Bình thường",
+            "so_luong": "01",
+            "rows": {"rows": [{"stt": "1", "rcd_close": ">5000", "rcd_open": ">5000",
+                               "rtx_a": "279", "rtx_b": "281", "rtx_c": "277",
+                               "utest": "3", "dong_cat": "5", "ket_qua": "Đạt",
+                               "so_tem": "016138"}]},
+        }}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES,
+                                     out_dir=tmp_path, forms=["93"])
+        assert warnings == [], warnings
+        doc = docx.Document(str(paths[0]))
+        text = "\n".join([c.text for t in doc.tables for r in t.rows for c in r.cells]
+                         + [p.text for p in doc.paragraphs])
+        for must in ("279", "281", "277", "016138", "AS-25E3-25H", "2500A",
+                     "MÁY CẮT HẠ THẾ (ACB)"):
+            assert must in text, f"mẫu 93 thiếu {must!r}"
+
+    def test_cap_ngam_renders_by_phase(self, tmp_path):
+        from bienban.fill import render_all
+
+        data = {"bien_ban_97_cap_ngam": {
+            "so_bien_ban": "50971026/BB-TC", "so_tem": "016139",
+            "doan_cap_tu": "Trụ 82/1", "doan_cap_den": "Trạm biến áp 1500kVA",
+            "tiet_dien": "3 x 50mm2", "dien_ap_dinh_muc": "12,7/22(24)kV",
+            "r_cach_dien_Mohm": {"rows": [
+                {"key": "pha1", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                {"key": "pha2", "tieu_chuan": ">5000", "so_lieu_do": ">10000"},
+                {"key": "pha3", "tieu_chuan": ">5000", "so_lieu_do": ">10000"}]},
+            "thu_dien_ap_mot_chieu": {"rows": [
+                {"key": "pha1", "thoi_gian": "15", "dien_ap": "38,1", "dong_ro": "17"},
+                {"key": "pha2", "thoi_gian": "15", "dien_ap": "38,1", "dong_ro": "12"},
+                {"key": "pha3", "thoi_gian": "15", "dien_ap": "38,1", "dong_ro": "15"}]},
+        }}
+        paths, warnings = render_all(data, templates_dir=TEMPLATES,
+                                     out_dir=tmp_path, forms=["97"])
+        assert warnings == [], warnings
+        doc = docx.Document(str(paths[0]))
+        text = "\n".join([c.text for t in doc.tables for r in t.rows for c in r.cells]
+                         + [p.text for p in doc.paragraphs])
+        for must in ("Pha 1 – (2+3+vỏ)", "Pha 2 – (1+3+vỏ)", "Pha 3 – (1+2+vỏ)",
+                     ">10000", "38,1", "17", "12", "15", "016139", "Trụ 82/1"):
+            assert must in text, f"mẫu 97 thiếu {must!r}"
+
+    def test_cap_ngam_blank_does_not_crash(self, tmp_path):
+        from bienban.fill import render_all
+
+        paths, warnings = render_all({"bien_ban_97_cap_ngam": {}},
+                                     templates_dir=TEMPLATES, out_dir=tmp_path,
+                                     forms=["97"])
+        assert paths and paths[0].exists()
+        assert all(not w.startswith("[BB 97] Không") for w in warnings)
+
+
+class TestUiDataKey:
+    """Lỗi thật: mẫu 49 ghi vào ``bien_ban_undefined`` vì UI hard-code 44–48."""
+
+    def test_ui_no_hardcoded_data_key_map(self):
+        html = (ROOT / "web" / "templates" / "index.html").read_text(encoding="utf-8")
+        assert "FORMS_INFO" in html
+        # bảng cứng cũ phải biến mất
+        assert 'const DATA_KEY = {44:"44_mba"' not in html
+
+    def test_every_form_has_server_data_key(self):
+        from bienban.spec import DATA_KEYS, TEMPLATES
+
+        assert set(DATA_KEYS) == set(TEMPLATES)
+        for key in DATA_KEYS.values():
+            assert key.startswith("bien_ban_")
+
+
+class TestResolvedImageFix:
+    def test_max_edge_is_high_enough_for_handwriting(self):
+        from bienban.vision import MAX_EDGE
+
+        assert MAX_EDGE >= 2400, "ảnh thu quá nhỏ thì chữ viết tay không đọc được"

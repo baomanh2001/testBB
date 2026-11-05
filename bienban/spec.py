@@ -23,6 +23,8 @@ TEMPLATES = {
     "47": "47 BB FCO.docx",
     "48": "48 BB điện trở nối đất.docx",
     "49": "49 BB MBA 3P.docx",
+    "93": "93 BB ACB.docx",
+    "97": "97 BB cáp ngầm.docx",
 }
 
 # Khoá tương ứng trong JSON cho từng biên bản
@@ -33,6 +35,8 @@ DATA_KEYS = {
     "47": "bien_ban_47_fco",
     "48": "bien_ban_48_tiep_dat",
     "49": "bien_ban_49_mba_3p",
+    "93": "bien_ban_93_acb",
+    "97": "bien_ban_97_cap_ngam",
 }
 
 TITLES = {
@@ -42,10 +46,13 @@ TITLES = {
     "47": "CẦU CHÌ TỰ RƠI (FCO)",
     "48": "ĐIỆN TRỞ NỐI ĐẤT",
     "49": "MÁY BIẾN ÁP 3 PHA",
+    "93": "MÁY CẮT HẠ THẾ (ACB)",
+    "97": "THÔNG TUYẾN CÁP NGẦM TRUNG THẾ",
 }
 
 DOC_KIND = {"44": "KIỂM ĐỊNH", "45": "KIỂM ĐỊNH", "46": "KIỂM ĐỊNH",
-            "47": "KIỂM ĐỊNH", "48": "THỬ NGHIỆM", "49": "KIỂM ĐỊNH"}
+            "47": "KIỂM ĐỊNH", "48": "THỬ NGHIỆM", "49": "KIỂM ĐỊNH",
+            "93": "THỬ NGHIỆM", "97": "KIỂM ĐỊNH"}
 
 DEVICE_NOUN = {
     "44": "Máy biến áp 1 pha",
@@ -54,6 +61,8 @@ DEVICE_NOUN = {
     "47": "FCO",
     "48": "điện trở nối đất",
     "49": "máy biến áp 3 pha",
+    "93": "máy cắt hạ thế (ACB)",
+    "97": "đoạn cáp ngầm trung thế",
 }
 
 # --------------------------------------------------------------------------- #
@@ -110,6 +119,50 @@ LABELS: dict[str, list[dict]] = {
         {"label": "Kiểm tra bên ngoài", "path": "kiem_tra_ben_ngoai", "style": "value"},
         {"label": "Số lượng", "path": "so_luong", "fmt": "pad2", "style": "value"},
         {"table": "mccb"},
+        {"label": "KẾT LUẬN", "path": "ket_luan", "style": "header"},
+    ],
+    "93": [
+        {"label": "Tên công trình", "path": "thong_tin_chung.ten_cong_trinh", "style": "header"},
+        {"label": "Địa chỉ", "path": "thong_tin_chung.dia_chi", "style": "header"},
+        {"label": "Đơn vị yêu cầu", "path": "thong_tin_chung.don_vi_yeu_cau", "style": "header"},
+        {"label": "Chỉ danh", "path": "chi_danh", "style": "value"},
+        {"label": "Lý do thử nghiệm", "path": "thong_tin_chung.ly_do_kiem_dinh", "style": "value"},
+        {"label": "Nơi thử nghiệm", "path": "thong_tin_chung.noi_kiem_dinh", "style": "value"},
+        {"label": "Ngày thử nghiệm", "path": "thong_tin_chung.ngay_kiem_dinh", "fmt": "date", "style": "value"},
+        {"label": "Hiệu", "path": "hieu", "style": "value"},
+        {"label": "Số cực", "path": "so_cuc", "fmt": "digits", "style": "value"},
+        {"label": "Loại", "path": "loai", "style": "value"},
+        {"label": "Kiểu", "path": "kieu", "style": "value"},
+        {"label": "Điện áp định mức", "path": "dien_ap_dinh_muc", "style": "value"},
+        {"label": "Dòng điện định mức", "path": "dong_dinh_muc", "style": "value"},
+        {"label": "Dòng điện ngắn mạch tối đa", "path": "dong_ngan_mach_toi_da", "style": "value"},
+        {"label": "Tần số", "path": "tan_so", "style": "value"},
+        {"label": "Điện áp cách điện định mức", "path": "dien_ap_cach_dien", "style": "value"},
+        {"label": "Điện áp chịu xung định mức", "path": "dien_ap_xung", "style": "value"},
+        {"label": "Kiểm tra bên ngoài", "path": "kiem_tra_ben_ngoai", "style": "value"},
+        {"label": "Số lượng", "path": "so_luong", "fmt": "pad2", "style": "value"},
+        {"table": "mccb"},
+        {"label": "KẾT LUẬN", "path": "ket_luan", "style": "header"},
+    ],
+    "97": [
+        {"label": "Tên công trình", "path": "thong_tin_chung.ten_cong_trinh", "style": "header"},
+        {"label": "Địa chỉ", "path": "thong_tin_chung.dia_chi", "style": "header"},
+        {"label": "Đơn vị yêu cầu", "path": "thong_tin_chung.don_vi_yeu_cau", "style": "header"},
+        {"label": "Chỉ danh", "path": "chi_danh", "style": "value"},
+        {"label": "Lý do kiểm định", "path": "thong_tin_chung.ly_do_kiem_dinh", "style": "value"},
+        {"label": "Nơi kiểm định", "path": "thong_tin_chung.noi_kiem_dinh", "style": "value"},
+        {"label": "Ngày kiểm định", "path": "thong_tin_chung.ngay_kiem_dinh", "fmt": "date", "style": "value"},
+        {"label": "- Số tem", "path": "so_tem", "fmt": "digits", "style": "value"},
+        {"label": "Đoạn cáp đi từ", "path": "doan_cap_tu", "style": "value"},
+        {"label": "Đến", "path": "doan_cap_den", "style": "value"},
+        {"label": "Loại cáp", "path": "loai_cap", "style": "value"},
+        {"label": "Tiết diện", "path": "tiet_dien", "style": "value"},
+        {"label": "Điện áp định mức", "path": "dien_ap_dinh_muc", "style": "value"},
+        {"label": "Tần số", "path": "tan_so", "style": "value"},
+        {"label": "Kiểm tra bên ngoài", "path": "kiem_tra_ben_ngoai", "style": "value"},
+        {"label": "Nhiệt độ", "path": "nhiet_do", "style": "value"},
+        {"table": "cap_ngam"},
+        {"table": "cap_ngam_dc"},
         {"label": "KẾT LUẬN", "path": "ket_luan", "style": "header"},
     ],
     "46": [
@@ -214,6 +267,8 @@ TABLE_PROBES = {
     "r_dc_3p": (["Cuộn dây cao áp", "Cuộn dây hạ áp", "AB", "BC", "CA"], 5),
     "ratio_3p": (["K1", "K2", "K3"], 4),
     "voltage_test_3p": (["Cao – (Hạ + vỏ)", "Hạ – (Cao + vỏ)"], 3),
+    "cap_ngam": (["Tiêu chuẩn", "Số liệu đo", "Pha 1"], 3),
+    "cap_ngam_dc": (["Thời gian", "Điện áp thử nghiệm", "Dòng rò"], 4),
     "no_load": (["U0", "I0", "P0"], 5),
     "short_circuit": (["UN", "PN75"], 5),
     "voltage_test": (["Đối tượng thử", "Thời gian thử"], 3),
@@ -229,3 +284,59 @@ TABLE_HEADER_ROWS = {
     "voltage_test": 1, "mccb": 2, "la": 1, "fco": 2, "earth": 1,
     "insulation_3p": 1, "r_dc_3p": 2, "ratio_3p": 1, "voltage_test_3p": 1,
 }
+
+# --------------------------------------------------------------------------- #
+# Giải mã SỐ BIÊN BẢN: 50 | <mã văn bản> | <tháng> | <năm>
+# --------------------------------------------------------------------------- #
+#: Mã văn bản đi kèm từng mẫu (2 chữ số cuối của số hiệu in trên tờ).
+#: VD biên bản MBA 3 pha: ``50|92|10|26`` → ``50921026/BB-TC``.
+FORM_DOC_CODE = {
+    "44": "44",
+    "45": "45",
+    "46": "46",
+    "47": "47",
+    "48": "48",
+    "49": "92",
+    "93": "93",
+    "94": "94",
+    "95": "95",
+    "96": "96",
+    "97": "97",
+    "109": "09",
+}
+
+
+def decode_doc_no(so: str) -> dict:
+    """Bóc số biên bản thành các phần: mã văn bản, tháng, năm của phiên.
+
+    ``"50921026/BB-TC"`` → ``{"ok": True, "code": "92", "thang": 10, "nam": 2026,
+    "phien": "tháng 10/2026"}``.
+
+    Định dạng công ty: **50** + mã văn bản (2 số) + tháng (2 số) + năm (2 số).
+    Nhờ vậy biết ngay một tờ là **phiên cũ hay phiên mới** mà không cần đoán.
+    """
+    digits = "".join(ch for ch in str(so or "") if ch.isdigit())
+    if len(digits) != 8 or not digits.startswith("50"):
+        return {"ok": False, "raw": str(so or "")}
+    code, thang, nam = digits[2:4], digits[4:6], digits[6:8]
+    if not (1 <= int(thang) <= 12):
+        return {"ok": False, "raw": str(so or "")}
+    return {
+        "ok": True,
+        "prefix": digits[:2],
+        "code": code,
+        "thang": int(thang),
+        "nam": 2000 + int(nam),
+        "phien": f"tháng {int(thang):02d}/{2000 + int(nam)}",
+    }
+
+
+def expected_doc_no(form: str, ngay: str) -> str:
+    """Số hiệu đúng phải có, suy từ mẫu + ngày kiểm định (``dd/mm/yyyy``)."""
+    import re as _re
+
+    m = _re.match(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$", str(ngay or ""))
+    code = FORM_DOC_CODE.get(str(form))
+    if not m or not code:
+        return ""
+    return f"50{code}{int(m.group(2)):02d}{m.group(3)[2:]}/BB-TC"
